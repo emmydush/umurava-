@@ -68,16 +68,36 @@ export default function AdminDashboard({ userName }: { userName: string }) {
   const fetchAdminData = async () => {
     try {
       const token = localStorage.getItem('token');
+      
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+
+      // Add timeout to prevent infinite loading
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Request timeout')), 8000)
+      );
+
       const [statsResponse, usersResponse, activitiesResponse] = await Promise.all([
-        axios.get('http://localhost:5000/api/admin/stats', {
-          headers: { Authorization: `Bearer ${token}` }
-        }),
-        axios.get('http://localhost:5000/api/admin/users', {
-          headers: { Authorization: `Bearer ${token}` }
-        }),
-        axios.get('http://localhost:5000/api/admin/activities', {
-          headers: { Authorization: `Bearer ${token}` }
-        })
+        Promise.race([
+          axios.get('http://localhost:5000/api/admin/stats', {
+            headers: { Authorization: `Bearer ${token}` }
+          }),
+          timeoutPromise
+        ]) as Promise<any>,
+        Promise.race([
+          axios.get('http://localhost:5000/api/admin/users', {
+            headers: { Authorization: `Bearer ${token}` }
+          }),
+          timeoutPromise
+        ]) as Promise<any>,
+        Promise.race([
+          axios.get('http://localhost:5000/api/admin/activities', {
+            headers: { Authorization: `Bearer ${token}` }
+          }),
+          timeoutPromise
+        ]) as Promise<any>
       ]);
 
       setStats(statsResponse.data.stats);

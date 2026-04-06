@@ -1,13 +1,13 @@
 import { Request, Response } from 'express';
-import User, { IUser } from '../models/User';
-import JobPosting, { IJobPosting } from '../models/JobPosting';
-import Application from '../models/Application';
+import { User } from '../models/User';
+import { JobPosting } from '../models/JobPosting';
+import { Application } from '../models/Application';
 import { TalentProfile } from '../models/TalentProfile';
 import { ScreeningSession } from '../models/ScreeningSession';
 
 // Extend Request type to include user
 interface AuthenticatedRequest extends Request {
-  user: IUser;
+  user: any; // Using any since IUser interface isn't exported
 }
 
 export const getSystemStats = async (req: AuthenticatedRequest, res: Response) => {
@@ -91,7 +91,7 @@ export const getSystemActivities = async (req: AuthenticatedRequest, res: Respon
 
     // Transform into activity format
     const activities = [
-      ...recentJobs.map((job: IJobPosting) => ({
+      ...recentJobs.map((job: any) => ({
         _id: job._id,
         type: 'job_created',
         description: `New job posted: ${job.title}`,
@@ -115,7 +115,7 @@ export const getSystemActivities = async (req: AuthenticatedRequest, res: Respon
         createdAt: session.createdAt,
         userName: 'Recruiter'
       })),
-      ...recentUsers.map((user: IUser) => ({
+      ...recentUsers.map((user: any) => ({
         _id: user._id,
         type: 'user_registered',
         description: `New ${user.role} registered: ${user.firstName} ${user.lastName}`,
@@ -152,10 +152,10 @@ export const getUserDetails = async (req: AuthenticatedRequest, res: Response) =
     let additionalDetails = {};
     
     if (user.role === 'talent') {
-      const talentProfile = await TalentProfile.findOne({ userId: user._id });
+      const talentProfile = await TalentProfile.findOne({ userId: user._id.toString() });
       additionalDetails = { talentProfile };
     } else if (user.role === 'recruiter') {
-      const jobs = await JobPosting.find({ recruiterId: user._id }).select('title isActive createdAt');
+      const jobs = await JobPosting.find({ recruiterId: user._id.toString() }).select('title isActive createdAt');
       additionalDetails = { jobs };
     }
 
@@ -207,7 +207,7 @@ export const deleteUser = async (req: AuthenticatedRequest, res: Response) => {
     const { userId } = req.params;
     
     // Don't allow admin to delete themselves
-    if (userId === req.user._id.toString()) {
+    if (userId === req.user._id?.toString()) {
       return res.status(400).json({ message: 'Cannot delete your own account' });
     }
 
@@ -219,11 +219,11 @@ export const deleteUser = async (req: AuthenticatedRequest, res: Response) => {
 
     // Clean up related data based on role
     if (user.role === 'talent') {
-      await TalentProfile.deleteMany({ userId: user._id });
-      await Application.deleteMany({ candidateId: user._id });
+      await TalentProfile.deleteMany({ userId: user._id.toString() });
+      await Application.deleteMany({ candidateId: user._id.toString() });
     } else if (user.role === 'recruiter') {
-      await JobPosting.deleteMany({ recruiterId: user._id });
-      await ScreeningSession.deleteMany({ recruiterId: user._id });
+      await JobPosting.deleteMany({ recruiterId: user._id.toString() });
+      await ScreeningSession.deleteMany({ recruiterId: user._id.toString() });
     }
 
     res.json({ message: 'User deleted successfully' });

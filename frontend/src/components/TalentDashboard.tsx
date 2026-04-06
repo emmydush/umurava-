@@ -50,19 +50,37 @@ export default function TalentDashboard({ userName }: { userName: string }) {
   const fetchTalentData = async () => {
     try {
       const token = localStorage.getItem('token');
+      
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+
+      // Add timeout to prevent infinite loading
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Request timeout')), 8000)
+      );
+
       const [applicationsResponse, profileResponse] = await Promise.all([
-        axios.get('http://localhost:5000/api/applications/my-applications', {
-          headers: { Authorization: `Bearer ${token}` }
-        }),
-        axios.get('http://localhost:5000/api/talents/profile', {
-          headers: { Authorization: `Bearer ${token}` }
-        })
+        Promise.race([
+          axios.get('http://localhost:5000/api/applications/my-applications', {
+            headers: { Authorization: `Bearer ${token}` }
+          }),
+          timeoutPromise
+        ]) as Promise<any>,
+        Promise.race([
+          axios.get('http://localhost:5000/api/talents/profile', {
+            headers: { Authorization: `Bearer ${token}` }
+          }),
+          timeoutPromise
+        ]) as Promise<any>
       ]);
 
       setApplications(applicationsResponse.data.applications || []);
       setProfile(profileResponse.data.profile);
     } catch (error) {
       console.error('Failed to fetch talent data:', error);
+      // Still set loading to false so the user can see the page
     } finally {
       setLoading(false);
     }

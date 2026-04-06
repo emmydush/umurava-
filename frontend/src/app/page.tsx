@@ -55,6 +55,9 @@ export default function Home() {
     const token = localStorage.getItem('token');
     const userStr = localStorage.getItem('user');
     
+    // Reset loading state when component mounts
+    setLoading(true);
+    
     if (token && userStr) {
       setIsLoggedIn(true);
       try {
@@ -69,17 +72,33 @@ export default function Home() {
     } else {
       setLoading(false);
     }
+    
+    // Cleanup function to handle unmounting
+    return () => {
+      setLoading(false);
+    };
   }, []);
 
   const fetchDashboardData = async (token: string) => {
     try {
+      // Add timeout to prevent infinite loading
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Request timeout')), 10000)
+      );
+
       const [jobsResponse, sessionsResponse] = await Promise.all([
-        axios.get('http://localhost:5000/api/jobs', {
-          headers: { Authorization: `Bearer ${token}` }
-        }),
-        axios.get('http://localhost:5000/api/screening/sessions', {
-          headers: { Authorization: `Bearer ${token}` }
-        })
+        Promise.race([
+          axios.get('http://localhost:5000/api/jobs', {
+            headers: { Authorization: `Bearer ${token}` }
+          }),
+          timeoutPromise
+        ]) as Promise<any>,
+        Promise.race([
+          axios.get('http://localhost:5000/api/screening/sessions', {
+            headers: { Authorization: `Bearer ${token}` }
+          }),
+          timeoutPromise
+        ]) as Promise<any>
       ]);
 
       setJobs(jobsResponse.data.jobs || []);
@@ -92,6 +111,8 @@ export default function Home() {
         localStorage.removeItem('user');
         setIsLoggedIn(false);
       }
+      // For other errors (network, timeout, etc.), still set loading to false
+      // so the user can see the page
     } finally {
       setLoading(false);
     }

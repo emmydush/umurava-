@@ -55,13 +55,30 @@ export default function RecruiterDashboard({ userName }: { userName: string }) {
   const fetchDashboardData = async () => {
     try {
       const token = localStorage.getItem('token');
+      
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+
+      // Add timeout to prevent infinite loading
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Request timeout')), 8000)
+      );
+
       const [jobsResponse, sessionsResponse] = await Promise.all([
-        axios.get('http://localhost:5000/api/jobs', {
-          headers: { Authorization: `Bearer ${token}` }
-        }),
-        axios.get('http://localhost:5000/api/screening/sessions', {
-          headers: { Authorization: `Bearer ${token}` }
-        })
+        Promise.race([
+          axios.get('http://localhost:5000/api/jobs', {
+            headers: { Authorization: `Bearer ${token}` }
+          }),
+          timeoutPromise
+        ]) as Promise<any>,
+        Promise.race([
+          axios.get('http://localhost:5000/api/screening/sessions', {
+            headers: { Authorization: `Bearer ${token}` }
+          }),
+          timeoutPromise
+        ]) as Promise<any>
       ]);
 
       setJobs(jobsResponse.data.jobs || []);
