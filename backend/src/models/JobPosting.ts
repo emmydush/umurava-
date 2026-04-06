@@ -9,6 +9,15 @@ const SalarySchema = new Schema({
   currency: { type: String, default: 'USD' }
 }, { _id: false });
 
+const IdealProfileSchema = new Schema({
+  experience: { type: String, required: true },
+  education: { type: String, required: true },
+  skills: [{ type: String, trim: true }],
+  qualifications: [{ type: String, trim: true }],
+  personalityTraits: [{ type: String, trim: true }],
+  certifications: [{ type: String, trim: true }]
+}, { _id: false });
+
 const JobPostingSchema = new Schema<IJobPostingDocument>({
   recruiterId: {
     type: Schema.Types.ObjectId,
@@ -23,6 +32,10 @@ const JobPostingSchema = new Schema<IJobPostingDocument>({
   description: {
     type: String,
     required: true
+  },
+  jdText: {
+    type: String,
+    trim: true
   },
   requirements: [{ type: String, trim: true }],
   responsibilities: [{ type: String, trim: true }],
@@ -43,6 +56,9 @@ const JobPostingSchema = new Schema<IJobPostingDocument>({
   isActive: {
     type: Boolean,
     default: true
+  },
+  idealProfile: {
+    type: IdealProfileSchema
   }
 }, {
   timestamps: true

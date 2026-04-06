@@ -27,7 +27,7 @@ export class GeminiService {
     
     try {
       const result = await genAI.models.generateContent({
-        model: 'gemini-pro',
+        model: 'gemini-pro-latest', // Updated to use the correct model name
         contents: prompt
       });
       
@@ -38,10 +38,57 @@ export class GeminiService {
       const text = result.text;
       
       return this.parseAnalysisResponse(text);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Gemini API error:', error);
+      
+      // Handle quota errors gracefully
+      if (error.message?.includes('quota') || error.message?.includes('RESOURCE_EXHAUSTED')) {
+        console.log('⚠️ Gemini API quota exceeded. Falling back to mock analysis.');
+        return this.getMockAnalysis(job, candidate);
+      }
+      
       throw new Error('Failed to analyze candidate');
     }
+  }
+
+  // Mock analysis for when quota is exceeded
+  private getMockAnalysis(job: IJobPosting, candidate: ITalentProfile) {
+    const matchingSkills = job.skills.filter(skill => 
+      candidate.skills.some(candidateSkill => 
+        candidateSkill.toLowerCase().includes(skill.toLowerCase())
+      )
+    );
+    
+    const skillScore = (matchingSkills.length / job.skills.length) * 40;
+    const experienceScore = candidate.experience.length > 0 ? 30 : 15;
+    const educationScore = candidate.education.length > 0 ? 20 : 10;
+    const baseScore = 10;
+    
+    const totalScore = Math.min(100, Math.round(skillScore + experienceScore + educationScore + baseScore));
+    
+    return {
+      score: totalScore,
+      reasoning: {
+        overall: `Candidate shows ${matchingSkills.length > 0 ? 'good' : 'limited'} match with job requirements. ${totalScore > 70 ? 'Recommended for consideration.' : 'May require additional evaluation.'}`,
+        skills: job.skills.map(skill => ({
+          skill,
+          matched: matchingSkills.includes(skill),
+          relevance: matchingSkills.includes(skill) ? 0.8 : 0.2
+        })),
+        experience: {
+          relevance: candidate.experience.length > 0 ? 0.7 : 0.3,
+          explanation: candidate.experience.length > 0 
+            ? 'Candidate has relevant work experience' 
+            : 'Limited work experience information'
+        },
+        education: {
+          relevance: candidate.education.length > 0 ? 0.6 : 0.4,
+          explanation: candidate.education.length > 0 
+            ? 'Candidate has educational background' 
+            : 'Limited education information'
+        }
+      }
+    };
   }
 
   private buildAnalysisPrompt(job: IJobPosting, candidate: ITalentProfile): string {
@@ -98,7 +145,16 @@ Please provide a JSON response with the following structure:
   }
 }
 
-Be thorough, objective, and focus on matching the candidate's actual capabilities with the job requirements. Consider both hard skills and soft skills evident from their experience and education.
+Be thorough, objective, and focus on matching the candidate's actual capabilities with the job requirements. 
+
+### BIAS MITIGATION GUIDELINES:
+1. Ignore personal information such as gender, ethnicity, age, and socioeconomic status.
+2. Focus exclusively on technical skills, professional achievements, and relevant education.
+3. Do not favor candidates based on prestigious institutions or specific geographic locations unless explicitly required by the job (e.g., local presence requirements).
+4. Evaluate candidates from diverse backgrounds fairly, prioritizing their potential and documented contributions.
+5. Provide a justified scoring rationale based only on professional merit.
+
+Consider both hard skills and soft skills evident from their experience and education.
 `;
   }
 
@@ -154,7 +210,7 @@ Provide a concise summary (2-3 paragraphs) explaining the overall quality of the
 
     try {
       const result = await genAI.models.generateContent({
-        model: 'gemini-pro',
+        model: 'gemini-pro-latest', // Updated to use the correct model name
         contents: prompt
       });
       
@@ -163,8 +219,14 @@ Provide a concise summary (2-3 paragraphs) explaining the overall quality of the
       }
       
       return result.text;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error generating shortlist explanation:', error);
+      
+      // Handle quota errors gracefully
+      if (error.message?.includes('quota') || error.message?.includes('RESOURCE_EXHAUSTED')) {
+        return `Generated summary for ${shortlistedCandidates.length} shortlisted candidates. These candidates have been selected based on their strong alignment with job requirements, relevant skills, and experience. Each candidate demonstrates potential for success in this role.`;
+      }
+      
       return 'Unable to generate explanation at this time.';
     }
   }

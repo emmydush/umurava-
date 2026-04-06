@@ -48,27 +48,57 @@ export class ScreeningService {
     candidates: any[]
   ): Promise<void> {
     const results: any[] = [];
+    const BATCH_SIZE = 5; // Batch size to stay within rate limits
+    const DELAY_BETWEEN_BATCHES = 2000; // 2 seconds delay between batches
 
-    for (const candidate of candidates) {
-      try {
-        const analysis = await this.geminiService.analyzeCandidate(job, candidate);
-        
-        const screeningResult = new ScreeningResult({
-          jobId: job._id,
-          talentId: candidate._id,
-          score: analysis.score,
-          ranking: 0,
-          reasoning: analysis.reasoning,
-          shortlisted: false
-        });
+    for (let i = 0; i < candidates.length; i += BATCH_SIZE) {
+      const batch = candidates.slice(i, i + BATCH_SIZE);
+      
+      const batchPromises = batch.map(async (candidate) => {
+        try {
+          // CHECK CACHE: See if this candidate was already screened for this job and their profile hasn't changed.
+          const cachedResult = await ScreeningResult.findOne({
+            jobId: job._id,
+            talentId: candidate._id,
+            talentProfileUpdatedAt: { $gte: candidate.updatedAt }
+          });
 
-        await screeningResult.save();
-        results.push(screeningResult);
-      } catch (error) {
-        console.error(`Error analyzing candidate ${candidate._id}:`, error);
+          if (cachedResult) {
+            console.log(`Using cached result for candidate ${candidate._id}`);
+            return cachedResult;
+          }
+
+          // Not in cache or stale: Call Gemini
+          const analysis = await this.geminiService.analyzeCandidate(job, candidate);
+          
+          const screeningResult = new ScreeningResult({
+            jobId: job._id,
+            talentId: candidate._id,
+            score: analysis.score,
+            ranking: 0,
+            reasoning: analysis.reasoning,
+            shortlisted: false,
+            talentProfileUpdatedAt: candidate.updatedAt
+          });
+
+          await screeningResult.save();
+          return screeningResult;
+        } catch (error) {
+          console.error(`Error analyzing candidate ${candidate._id}:`, error);
+          return null;
+        }
+      });
+
+      const batchResults = await Promise.all(batchPromises);
+      results.push(...batchResults.filter(r => r !== null));
+
+      // Wait between batches to respect rate limits if not the last batch
+      if (i + BATCH_SIZE < candidates.length) {
+        await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_BATCHES));
       }
     }
 
+    // Rest of the logic: Sort, rank, and shortlist...
     results.sort((a, b) => b.score - a.score);
 
     const shortlistCount = Math.min(20, Math.max(10, Math.ceil(results.length * 0.2)));
@@ -81,31 +111,40 @@ export class ScreeningService {
 
     const shortlistedCandidates = results.slice(0, shortlistCount);
     
-    let shortlistExplanation = '';
+    // Generate explanation for the entire shortlist
     try {
-      shortlistExplanation = await this.geminiService.generateShortlistExplanation(
+      const shortlistExplanation = await this.geminiService.generateShortlistExplanation(
         job, 
-        shortlistedCandidates.map(result => ({
-          ...result,
-          firstName: candidates.find(c => c._id.toString() === result.talentId.toString())?.firstName,
-          lastName: candidates.find(c => c._id.toString() === result.talentId.toString())?.lastName,
-          skills: candidates.find(c => c._id.toString() === result.talentId.toString())?.skills,
-          experience: candidates.find(c => c._id.toString() === result.talentId.toString())?.experience
-        }))
+        shortlistedCandidates.map(result => {
+          const candidate = candidates.find(c => c._id.toString() === result.talentId.toString());
+          return {
+            ...result.toObject(),
+            firstName: candidate?.firstName,
+            lastName: candidate?.lastName,
+            skills: candidate?.skills,
+            experience: candidate?.experience
+          };
+        })
       );
+
+      await ScreeningSession.findByIdAndUpdate(sessionId, {
+        status: 'completed',
+        shortlistedCount: shortlistedCandidates.length,
+        results: results.map(r => r._id),
+        shortlistExplanation,
+        completedAt: new Date()
+      });
     } catch (error) {
       console.error('Error generating shortlist explanation:', error);
+      await ScreeningSession.findByIdAndUpdate(sessionId, {
+        status: 'completed',
+        shortlistedCount: shortlistedCandidates.length,
+        results: results.map(r => r._id),
+        completedAt: new Date()
+      });
     }
 
-    await ScreeningSession.findByIdAndUpdate(sessionId, {
-      status: 'completed',
-      shortlistedCount: shortlistedCandidates.length,
-      results: results.map(r => r._id),
-      completedAt: new Date()
-    });
-
     console.log(`Screening completed for session ${sessionId}`);
-    console.log(`Shortlist explanation: ${shortlistExplanation}`);
   }
 
   async getScreeningResults(sessionId: string, userId: string): Promise<any> {
@@ -164,5 +203,25 @@ export class ScreeningService {
       console.error('Error getting screening sessions:', error);
       throw error;
     }
+  }
+
+  async exportShortlistToCSV(jobId: string): Promise<string> {
+    const candidates = await this.getShortlistedCandidates(jobId);
+    
+    const headers = ['Ranking', 'Name', 'Email', 'Match Score', 'Key Skills', 'Experience Level', 'AI Rationale'];
+    const rows = candidates.map(c => {
+      const profile = (c.talentId as any);
+      return [
+        c.ranking.toString(),
+        `${profile.firstName} ${profile.lastName}`,
+        profile.email,
+        `${c.score}%`,
+        profile.skills.slice(0, 5).join('; '),
+        profile.title,
+        c.reasoning.overall.replace(/"/g, '""')
+      ].map(field => `"${field}"`).join(',');
+    });
+
+    return [headers.join(','), ...rows].join('\n');
   }
 }

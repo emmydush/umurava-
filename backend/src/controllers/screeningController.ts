@@ -89,3 +89,17 @@ export const getScreeningSessions = async (req: Request & { user?: any }, res: R
     res.status(500).json({ message: 'Internal server error' });
   }
 };
+
+export const downloadShortlistCSV = async (req: Request & { user?: any }, res: Response) => {
+  try {
+    const jobId = Array.isArray(req.params.jobId) ? req.params.jobId[0] : req.params.jobId;
+    const csvContent = await screeningService.exportShortlistToCSV(jobId);
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename=shortlist_${jobId}.csv`);
+    res.status(200).send(csvContent);
+  } catch (error) {
+    console.error('Error exporting CSV:', error);
+    res.status(500).json({ message: 'Failed to export shortlist' });
+  }
+};

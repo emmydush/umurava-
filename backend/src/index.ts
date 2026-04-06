@@ -1,5 +1,7 @@
-import express, { Request, Response } from 'express';
 import dotenv from 'dotenv';
+dotenv.config();
+
+import express, { Request, Response } from 'express';
 import cors from 'cors';
 import mongoose from 'mongoose';
 import path from 'path';
@@ -9,13 +11,16 @@ import { jobRoutes } from './routes/jobs';
 import { talentRoutes } from './routes/talents';
 import { screeningRoutes } from './routes/screening';
 import { fileRoutes } from './routes/files';
-
-dotenv.config();
+import { applicationRoutes } from './routes/applications';
+import { adminRoutes } from './routes/admin';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-app.use(cors());
+app.use(cors({
+  origin: ['http://localhost:3000', 'http://127.0.0.1:3000'],
+  credentials: true
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -31,6 +36,8 @@ app.use('/api/jobs', jobRoutes);
 app.use('/api/talents', talentRoutes);
 app.use('/api/screening', screeningRoutes);
 app.use('/api/files', fileRoutes);
+app.use('/api/applications', applicationRoutes);
+app.use('/api/admin', adminRoutes);
 
 // 404 handler
 app.use((req: Request, res: Response) => {
@@ -49,6 +56,7 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/umurava-ai-
       console.log(`  - Talents: http://localhost:${PORT}/api/talents`);
       console.log(`  - Screening: http://localhost:${PORT}/api/screening`);
       console.log(`  - Files: http://localhost:${PORT}/api/files`);
+      console.log(`  - Applications: http://localhost:${PORT}/api/applications`);
     });
   })
   .catch((error) => {
@@ -62,6 +70,7 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/umurava-ai-
       console.log(`  - Talents: http://localhost:${PORT}/api/talents`);
       console.log(`  - Screening: http://localhost:${PORT}/api/screening`);
       console.log(`  - Files: http://localhost:${PORT}/api/files`);
+      console.log(`  - Applications: http://localhost:${PORT}/api/applications`);
       console.log(`Note: Database operations will fail - this is demo mode only`);
     });
   });

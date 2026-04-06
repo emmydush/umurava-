@@ -39,6 +39,13 @@ export interface ITalentProfile {
   github?: string;
   resumeUrl?: string;
   resumeText?: string;
+  resumeFile?: {
+    filename: string;
+    originalName: string;
+    mimeType: string;
+    size: number;
+    uploadedAt: Date;
+  };
   specialties: string[];
   availability: 'immediate' | '2weeks' | '1month' | '2months' | '3months';
   salaryExpectation?: {
@@ -47,6 +54,8 @@ export interface ITalentProfile {
     currency: string;
   };
   workType: 'fulltime' | 'freelance' | 'both';
+  source: 'umurava_platform' | 'resume_upload';
+  isStructured: boolean; // true if from Umurava platform, false if from resume parsing
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -56,6 +65,7 @@ export interface IJobPosting {
   recruiterId: string;
   title: string;
   description: string;
+  jdText?: string; // Raw job description text for AI processing
   requirements: string[];
   responsibilities: string[];
   skills: string[];
@@ -70,8 +80,44 @@ export interface IJobPosting {
   duration?: string;
   department?: string;
   isActive: boolean;
+  idealProfile?: {
+    experience: string;
+    education: string;
+    skills: string[];
+    qualifications: string[];
+    personalityTraits?: string[];
+    certifications?: string[];
+  };
   createdAt?: Date;
   updatedAt?: Date;
+}
+
+export interface IApplication {
+  _id?: string;
+  jobId: string;
+  candidateId: string;
+  status: 'pending' | 'screening' | 'shortlisted' | 'rejected' | 'hired';
+  appliedAt: Date;
+  aiScore?: number;
+  aiRanking?: number;
+  aiReasoning?: {
+    overall: string;
+    skills: Array<{
+      skill: string;
+      matched: boolean;
+      relevance: number;
+    }>;
+    experience: {
+      relevance: number;
+      explanation: string;
+    };
+    education: {
+      relevance: number;
+      explanation: string;
+    };
+  };
+  recruiterNotes?: string;
+  lastUpdated?: Date;
 }
 
 export interface IScreeningResult {
@@ -97,6 +143,7 @@ export interface IScreeningResult {
     };
   };
   shortlisted: boolean;
+  talentProfileUpdatedAt: Date;
   createdAt?: Date;
 }
 
@@ -108,6 +155,7 @@ export interface IScreeningSession {
   shortlistedCount: number;
   status: 'pending' | 'processing' | 'completed' | 'failed';
   results: IScreeningResult[];
+  shortlistExplanation?: string;
   createdAt?: Date;
   completedAt?: Date;
 }

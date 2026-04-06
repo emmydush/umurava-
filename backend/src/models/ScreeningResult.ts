@@ -51,6 +51,10 @@ const ScreeningResultSchema = new Schema<IScreeningResultDocument>({
   shortlisted: {
     type: Boolean,
     default: false
+  },
+  talentProfileUpdatedAt: {
+    type: Date,
+    required: true
   }
 }, {
   timestamps: true

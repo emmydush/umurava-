@@ -25,6 +25,14 @@ const SalaryExpectationSchema = new Schema({
   currency: { type: String, default: 'USD' }
 }, { _id: false });
 
+const ResumeFileSchema = new Schema({
+  filename: { type: String, required: true },
+  originalName: { type: String, required: true },
+  mimeType: { type: String, required: true },
+  size: { type: Number, required: true },
+  uploadedAt: { type: Date, default: Date.now }
+}, { _id: false });
+
 const TalentProfileSchema = new Schema<ITalentProfileDocument>({
   userId: {
     type: Schema.Types.ObjectId,
@@ -47,6 +55,7 @@ const TalentProfileSchema = new Schema<ITalentProfileDocument>({
   github: { type: String, trim: true },
   resumeUrl: { type: String, trim: true },
   resumeText: { type: String },
+  resumeFile: { type: ResumeFileSchema },
   specialties: [{ type: String, trim: true }],
   availability: {
     type: String,
@@ -58,6 +67,15 @@ const TalentProfileSchema = new Schema<ITalentProfileDocument>({
     type: String,
     enum: ['fulltime', 'freelance', 'both'],
     default: 'both'
+  },
+  source: {
+    type: String,
+    enum: ['umurava_platform', 'resume_upload'],
+    default: 'umurava_platform'
+  },
+  isStructured: {
+    type: Boolean,
+    default: true
   }
 }, {
   timestamps: true
