@@ -1,6 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import { ParsedJobDescription } from './jdParserService';
 import { AnalyzedCandidate } from './candidateAnalyzerService';
+import { IParsedCandidateProfile } from '../types';
 
 export interface CandidateScore {
   overallScore: number; // 0-100
@@ -80,9 +81,10 @@ export class ScoringEngineService {
   async scoreCandidate(
     jobDescription: ParsedJobDescription,
     candidate: AnalyzedCandidate,
+    candidateEvidence: IParsedCandidateProfile | null,
     candidateName: string
   ): Promise<CandidateScore> {
-    const prompt = this.buildScoringPrompt(jobDescription, candidate, candidateName);
+    const prompt = this.buildScoringPrompt(jobDescription, candidate, candidateEvidence, candidateName);
     
     try {
       const result = await this.genAI.models.generateContent({
@@ -103,12 +105,12 @@ export class ScoringEngineService {
 
   async rankCandidates(
     jobDescription: ParsedJobDescription,
-    candidates: Array<{ candidate: AnalyzedCandidate; name: string; id: string }>
+    candidates: Array<{ candidate: AnalyzedCandidate; parsedProfile: IParsedCandidateProfile | null; name: string; id: string }>
   ): Promise<RankingResult> {
     // Score all candidates
     const scoredCandidates = await Promise.all(
-      candidates.map(async ({ candidate, name, id }) => {
-        const score = await this.scoreCandidate(jobDescription, candidate, name);
+      candidates.map(async ({ candidate, parsedProfile, name, id }) => {
+        const score = await this.scoreCandidate(jobDescription, candidate, parsedProfile, name);
         return {
           candidateId: id,
           candidateName: name,
@@ -137,8 +139,21 @@ export class ScoringEngineService {
   private buildScoringPrompt(
     jobDescription: ParsedJobDescription,
     candidate: AnalyzedCandidate,
+    candidateEvidence: IParsedCandidateProfile | null,
     candidateName: string
   ): string {
+    const evidenceSection = candidateEvidence ? `
+CANDIDATE EVIDENCE (Parsed Profile):
+- Source: ${candidateEvidence.source}
+- Skills: ${candidateEvidence.skills.join(', ')}
+- Years of Experience: ${candidateEvidence.yearsExp}
+- Titles: ${candidateEvidence.titles.join(', ')}
+- Experience entries: ${JSON.stringify(candidateEvidence.experience.slice(0, 3))}
+- Education entries: ${JSON.stringify(candidateEvidence.education.slice(0, 3))}
+- Contact: ${JSON.stringify(candidateEvidence.contact)}
+- Last Updated: ${candidateEvidence.lastUpdated.toISOString()}
+` : '';
+
     return `
 You are an expert AI-powered talent evaluator for Umurava Talent Marketplace. Your task is to score and rank a candidate against a job description using detailed sub-scores and provide comprehensive reasoning.
 
@@ -153,7 +168,7 @@ JOB DESCRIPTION (Ideal Profile):
 - Responsibilities: ${jobDescription.responsibilities.join(', ')}
 - Qualifications: ${jobDescription.qualifications.join(', ')}
 - Culture Fit: ${JSON.stringify(jobDescription.cultureFit)}
-
+${evidenceSection}
 CANDIDATE PROFILE:
 Name: ${candidateName}
 
@@ -300,7 +315,7 @@ Be thorough, objective, and provide specific evidence for your scoring. Focus on
           strengths: Array.isArray(parsed.rankingFactors?.strengths) ? parsed.rankingFactors.strengths : [],
           weaknesses: Array.isArray(parsed.rankingFactors?.weaknesses) ? parsed.rankingFactors.weaknesses : [],
           redFlags: Array.isArray(parsed.rankingFactors?.redFlags) ? parsed.rankingFactors.redFlags : [],
-          standoutQualifications: Array.isArray(parsed.rankingFactors?.standoutQualifications) ? parsed.rankingFactors.stoutQualifications : []
+          standoutQualifications: Array.isArray(parsed.rankingFactors?.standoutQualifications) ? parsed.rankingFactors.standoutQualifications : []
         },
         recommendation: this.validateRecommendation(parsed.recommendation)
       };

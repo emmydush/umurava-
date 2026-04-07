@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { 
   Briefcase, 
@@ -22,8 +22,21 @@ interface Application {
   jobId: string;
   status: string;
   createdAt: string;
+  appliedAt: string;
   jobTitle?: string;
   companyName?: string;
+  recruiterNotes?: string;
+  aiReasoning?: {
+    overall: string;
+    skills: any[];
+    experience: {
+      relevance: number;
+      explanation: string;
+    };
+    education: {
+      explanation: string;
+    };
+  };
 }
 
 interface TalentProfile {
@@ -42,6 +55,7 @@ export default function TalentDashboard({ userName }: { userName: string }) {
   const [profile, setProfile] = useState<TalentProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [expandedAppId, setExpandedAppId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchTalentData();
@@ -226,22 +240,106 @@ export default function TalentDashboard({ userName }: { userName: string }) {
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {applications.slice(0, 5).map((application) => (
-                        <tr key={application._id} className="hover:bg-slate-50/50 transition-colors group">
-                          <td className="px-6 py-4">
-                            <div className="font-bold text-slate-900">{application.jobTitle || 'Unknown Position'}</div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="text-sm text-slate-600">{application.companyName || 'Company'}</div>
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <ApplicationStatusBadge status={application.status} />
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="text-xs text-slate-400">
-                              {new Date(application.createdAt).toLocaleDateString()}
-                            </div>
-                          </td>
-                        </tr>
+                        <React.Fragment key={application._id}>
+                          <tr 
+                            className="hover:bg-slate-50/50 transition-colors group cursor-pointer"
+                            onClick={() => setExpandedAppId(expandedAppId === application._id ? null : application._id)}
+                          >
+                            <td className="px-6 py-4">
+                              <div className="font-bold text-slate-900 flex items-center space-x-2">
+                                <span>{application.jobTitle || 'Unknown Position'}</span>
+                                <div className={`transform transition-transform ${expandedAppId === application._id ? 'rotate-180' : ''}`}>
+                                  ▼
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="text-sm text-slate-600">{application.companyName || 'Company'}</div>
+                            </td>
+                            <td className="px-6 py-4 text-center">
+                              <ApplicationStatusBadge status={application.status} />
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="text-xs text-slate-400">
+                                {new Date(application.createdAt).toLocaleDateString()}
+                              </div>
+                            </td>
+                          </tr>
+                          
+                          {/* Expanded Details Row */}
+                          {expandedAppId === application._id && (
+                            <tr className="bg-slate-50/80">
+                              <td colSpan={4} className="px-6 py-6 border-b border-t border-slate-100">
+                                <div className="max-w-3xl space-y-4 animate-fade-in">
+                                  <h4 className="font-bold text-slate-800 flex items-center space-x-2">
+                                    <FileText className="w-5 h-5 text-primary-500" />
+                                    <span>Application Details</span>
+                                  </h4>
+                                  
+                                  {application.status === 'shortlisted' ? (
+                                    <div className="p-4 bg-green-50 border border-green-100 rounded-xl">
+                                      <h5 className="font-bold text-green-800 mb-2">Congratulations! You've been shortlisted.</h5>
+                                      <p className="text-green-700 text-sm mb-4">
+                                        The recruiter will be in touch with you shortly. Please review any instructions left by the recruiter below.
+                                      </p>
+                                      {application.recruiterNotes ? (
+                                        <div className="bg-white p-3 rounded-lg border border-green-100">
+                                          <div className="text-xs font-bold text-slate-400 uppercase tracking-tight mb-1">Message from Recruiter</div>
+                                          <p className="text-slate-700 text-sm">{application.recruiterNotes}</p>
+                                        </div>
+                                      ) : (
+                                        <p className="text-slate-500 text-sm italic">No specific message was attached.</p>
+                                      )}
+                                    </div>
+                                  ) : application.status === 'rejected' ? (
+                                    <div className="p-4 bg-red-50 border border-red-100 rounded-xl">
+                                      <h5 className="font-bold text-red-800 mb-2">Application Outcome</h5>
+                                      <p className="text-red-700 text-sm mb-4">
+                                        Thank you for your application. Unfortunately, we will not be moving forward with your profile at this time.
+                                      </p>
+                                      
+                                      {application.aiReasoning && (
+                                        <div className="bg-white p-4 rounded-lg border border-red-100 space-y-3">
+                                          <div className="text-xs font-bold text-slate-400 uppercase tracking-tight mb-1">AI Gap Analysis</div>
+                                          
+                                          {application.aiReasoning.overall && (
+                                            <p className="text-slate-700 text-sm pb-2 border-b border-slate-100">{application.aiReasoning.overall}</p>
+                                          )}
+                                          
+                                          {application.aiReasoning.experience && (
+                                            <div>
+                                              <span className="text-[10px] font-bold uppercase text-slate-500">Experience Analysis</span>
+                                              <p className="text-sm text-slate-600 mt-1">{application.aiReasoning.experience.explanation}</p>
+                                            </div>
+                                          )}
+                                          
+                                        </div>
+                                      )}
+                                      
+                                      {application.recruiterNotes && (
+                                        <div className="mt-4 bg-white p-3 rounded-lg border border-red-100">
+                                          <div className="text-xs font-bold text-slate-400 uppercase tracking-tight mb-1">Additional Feedback</div>
+                                          <p className="text-slate-700 text-sm">{application.recruiterNotes}</p>
+                                        </div>
+                                      )}
+                                    </div>
+                                  ) : application.status === 'under_review' || application.status === 'screening' || application.status === 'pending_score' ? (
+                                    <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl">
+                                      <h5 className="font-bold text-blue-800 mb-2">Your application is currently under review</h5>
+                                      <p className="text-blue-700 text-sm">
+                                        Our AI and recruitment team are currently analyzing your profile against the job requirements. You will be notified once a decision has been made.
+                                      </p>
+                                    </div>
+                                  ) : (
+                                    <div className="text-sm text-slate-600">
+                                      Your application is in {application.status} status. Check back later for updates.
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
                       ))}
                     </tbody>
                   </table>
@@ -352,16 +450,22 @@ function StatCard({ title, value, icon, trend }: { title: string, value: string,
 }
 
 function ApplicationStatusBadge({ status }: { status: string }) {
-  const styles = {
+  const styles: Record<string, string> = {
+    pending_score: 'bg-slate-100 text-slate-700',
     pending: 'bg-yellow-100 text-yellow-700',
+    scored: 'bg-cyan-100 text-cyan-700',
     screening: 'bg-blue-100 text-blue-700',
-    accepted: 'bg-green-100 text-green-700',
+    under_review: 'bg-purple-100 text-purple-700',
+    shortlisted: 'bg-green-100 text-green-700',
+    hired: 'bg-emerald-100 text-emerald-800',
     rejected: 'bg-red-100 text-red-700',
-  }[status] || 'bg-slate-100 text-slate-700';
+  };
+
+  const displayStatus = status === 'pending_score' ? 'scoring' : status.replace('_', ' ');
 
   return (
-    <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-tight ${styles}`}>
-      {status}
+    <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-tight ${styles[status] || styles['pending']}`}>
+      {displayStatus}
     </span>
   );
 }

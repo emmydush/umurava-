@@ -9,6 +9,35 @@ export interface IUser {
   updatedAt?: Date;
 }
 
+export interface IParsedCandidateProfile {
+  source: 'platform' | 'resume';
+  skills: string[];
+  yearsExp: number;
+  titles: string[];
+  experience: Array<{
+    company?: string;
+    position?: string;
+    duration?: string;
+    startDate?: string;
+    endDate?: string;
+    description?: string;
+  }>;
+  education: Array<{
+    institution?: string;
+    degree?: string;
+    field?: string;
+    startDate?: string;
+    endDate?: string;
+  }>;
+  summary?: string;
+  contact?: {
+    email?: string;
+    phone?: string;
+    location?: string;
+  };
+  lastUpdated: Date;
+}
+
 export interface ITalentProfile {
   _id?: string;
   userId: string;
@@ -23,15 +52,15 @@ export interface ITalentProfile {
   experience: Array<{
     company: string;
     position: string;
-    startDate: Date;
+    startDate?: Date;
     endDate?: Date;
-    description: string;
+    description?: string;
   }>;
   education: Array<{
     institution: string;
     degree: string;
     field: string;
-    startDate: Date;
+    startDate?: Date;
     endDate?: Date;
   }>;
   portfolio?: string;
@@ -56,14 +85,41 @@ export interface ITalentProfile {
   workType: 'fulltime' | 'freelance' | 'both';
   source: 'umurava_platform' | 'resume_upload';
   isStructured: boolean; // true if from Umurava platform, false if from resume parsing
+  parsedProfile?: IParsedCandidateProfile;
   createdAt?: Date;
   updatedAt?: Date;
+}
+
+export interface IParsedJobDescription {
+  requiredSkills: string[];
+  niceToHaveSkills: string[];
+  seniorityLevel: 'junior' | 'mid' | 'senior' | 'lead' | 'principal' | 'executive';
+  domain: string;
+  idealCandidateSummary: string;
+  experience: {
+    minimum: number;
+    preferred: number;
+    unit: 'years';
+  };
+  education: {
+    required: boolean;
+    level: 'high_school' | 'associate' | 'bachelor' | 'master' | 'phd' | 'none';
+    field?: string;
+  };
+  responsibilities: string[];
+  qualifications: string[];
+  cultureFit: {
+    workStyle: string[];
+    teamEnvironment: string;
+    companyValues: string[];
+  };
 }
 
 export interface IJobPosting {
   _id?: string;
   recruiterId: string;
   title: string;
+  company: string;
   description: string;
   jdText?: string; // Raw job description text for AI processing
   requirements: string[];
@@ -80,6 +136,7 @@ export interface IJobPosting {
   duration?: string;
   department?: string;
   isActive: boolean;
+  extractedRequirements?: IParsedJobDescription;
   idealProfile?: {
     experience: string;
     education: string;
@@ -96,7 +153,7 @@ export interface IApplication {
   _id?: string;
   jobId: string;
   candidateId: string;
-  status: 'pending' | 'screening' | 'shortlisted' | 'rejected' | 'hired';
+  status: 'pending' | 'pending_score' | 'scored' | 'screening' | 'under_review' | 'shortlisted' | 'rejected' | 'hired';
   appliedAt: Date;
   aiScore?: number;
   aiRanking?: number;
@@ -117,6 +174,7 @@ export interface IApplication {
     };
   };
   recruiterNotes?: string;
+  inShortlist?: boolean;
   lastUpdated?: Date;
 }
 

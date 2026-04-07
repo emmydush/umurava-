@@ -59,8 +59,17 @@ export const getScreeningResults = async (req: Request & { user?: any }, res: Re
 
 export const getShortlistedCandidates = async (req: Request & { user?: any }, res: Response) => {
   try {
-    const jobId = Array.isArray(req.params.jobId) ? req.params.jobId[0] : req.params.jobId;
+    const jobId = Array.isArray(req.params.jobId) ? req.params.jobId[0] : (req.params.jobId || req.params.id) as string;
     const limit = parseInt(req.query.limit as string) || 20;
+
+    const job = await JobPosting.findById(jobId);
+    if (!job) {
+      return res.status(404).json({ message: 'Job not found' });
+    }
+
+    if (req.user.role === 'recruiter' && job.recruiterId.toString() !== req.user._id) {
+      return res.status(403).json({ message: 'Unauthorized to view shortlist for this job' });
+    }
 
     const candidates = await screeningService.getShortlistedCandidates(jobId, limit);
 

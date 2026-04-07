@@ -96,6 +96,19 @@ export class FileUploadService {
     }
   }
 
+  async parseResumeText(text: string): Promise<ParsedResume> {
+    try {
+      const extractedData = this.extractStructuredData(text);
+      return {
+        text,
+        extractedData
+      };
+    } catch (error) {
+      console.error('Error parsing resume text:', error);
+      throw new Error('Failed to parse resume text');
+    }
+  }
+
   private async parsePDF(filePath: string): Promise<string> {
     const dataBuffer = await fs.readFile(filePath);
     const data = await (pdfParse as any)(dataBuffer);

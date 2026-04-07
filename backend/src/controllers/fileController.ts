@@ -67,9 +67,33 @@ export const uploadResume = async (req: Request & { user?: any, file?: Express.M
       }
     }
     
-    // Store the resume text and URL
+    // Store the resume text, URL, and parsed normalized profile
     profile.resumeText = parsedResume.text;
     profile.resumeUrl = `/uploads/${req.file.filename}`;
+    profile.parsedProfile = {
+      source: 'resume',
+      skills: parsedResume.extractedData?.skills || [],
+      yearsExp: 0,
+      titles: (parsedResume.extractedData?.experience || []).map(exp => exp.position || '').filter(Boolean),
+      experience: (parsedResume.extractedData?.experience || []).map(exp => ({
+        company: exp.company,
+        position: exp.position,
+        duration: exp.duration,
+        description: exp.position || undefined
+      })),
+      education: (parsedResume.extractedData?.education || []).map(edu => ({
+        institution: edu.institution,
+        degree: edu.degree,
+        field: edu.field
+      })),
+      summary: undefined,
+      contact: {
+        email: parsedResume.extractedData?.email,
+        phone: parsedResume.extractedData?.phone,
+        location: profile.location
+      },
+      lastUpdated: new Date()
+    };
     
     await profile.save();
     

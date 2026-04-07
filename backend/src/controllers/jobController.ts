@@ -1,5 +1,8 @@
 import { Request, Response } from 'express';
 import { JobPosting } from '../models';
+import { JDParserService } from '../services/jdParserService';
+
+const jdParser = new JDParserService();
 
 export const createJob = async (req: Request & { user?: any }, res: Response) => {
   try {
@@ -7,6 +10,27 @@ export const createJob = async (req: Request & { user?: any }, res: Response) =>
       ...req.body,
       recruiterId: req.user._id
     };
+
+    let extractedRequirements;
+    try {
+      extractedRequirements = await jdParser.parseJobDescription(
+        jobData.jdText || jobData.description,
+        jobData.title
+      );
+
+      jobData.extractedRequirements = extractedRequirements;
+      jobData.requirements = Array.isArray(jobData.requirements) && jobData.requirements.length > 0
+        ? jobData.requirements
+        : extractedRequirements.requiredSkills;
+      jobData.responsibilities = Array.isArray(jobData.responsibilities) && jobData.responsibilities.length > 0
+        ? jobData.responsibilities
+        : extractedRequirements.responsibilities;
+      jobData.skills = Array.isArray(jobData.skills)
+        ? Array.from(new Set([...(jobData.skills || []), ...extractedRequirements.requiredSkills]))
+        : extractedRequirements.requiredSkills;
+    } catch (parseError) {
+      console.error('JD parsing failed while creating job:', parseError);
+    }
 
     const job = new JobPosting(jobData);
     await job.save();
@@ -23,17 +47,31 @@ export const createJob = async (req: Request & { user?: any }, res: Response) =>
 
 export const getJobs = async (req: Request & { user?: any }, res: Response) => {
   try {
-    const { page = 1, limit = 10, workType, isActive = true } = req.query;
+    const { page = 1, limit = 10, workType, isActive } = req.query;
     
     const filter: any = {};
-    if (req.user.role === 'recruiter') {
-      filter.recruiterId = req.user._id;
+    if (req.user) {
+      if (req.user.role === 'recruiter') {
+        filter.recruiterId = req.user._id;
+      }
+    } else {
+      // Public access
+      filter.isActive = true;
     }
+
     if (workType) {
       filter.workType = workType;
     }
+    
     if (isActive !== undefined) {
       filter.isActive = isActive === 'true';
+    } else if (req.user && req.user.role === 'admin') {
+      // Admins see all by default unless filtered
+    } else if (req.user && req.user.role === 'recruiter') {
+      // Recruiters see all their own jobs by default
+    } else {
+      // Others see only active jobs by default
+      filter.isActive = true;
     }
 
     const jobs = await JobPosting.find(filter)

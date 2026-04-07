@@ -25,6 +25,7 @@ import AdminDashboard from '@/components/AdminDashboard';
 interface Job {
   _id: string;
   title: string;
+  company: string;
   description: string;
   skills: string[];
   workType: string;
@@ -54,10 +55,9 @@ export default function Home() {
   useEffect(() => {
     const token = localStorage.getItem('token');
     const userStr = localStorage.getItem('user');
-    
-    // Reset loading state when component mounts
+
     setLoading(true);
-    
+
     if (token && userStr) {
       setIsLoggedIn(true);
       try {
@@ -70,49 +70,58 @@ export default function Home() {
       }
       fetchDashboardData(token);
     } else {
-      setLoading(false);
+      fetchPublicJobs();
     }
-    
-    // Cleanup function to handle unmounting
+
     return () => {
       setLoading(false);
     };
   }, []);
 
+  const fetchWithTimeout = async (request: Promise<any>, timeoutMs = 8000) => {
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Request timeout')), timeoutMs)
+    );
+    return await Promise.race([request, timeoutPromise]);
+  };
+
+  const fetchPublicJobs = async () => {
+    try {
+      const response = await fetchWithTimeout(axios.get('http://localhost:5000/api/jobs'), 8000);
+      setJobs((response as any).data.jobs || []);
+    } catch (err) {
+      console.error('Failed to fetch public jobs:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const fetchDashboardData = async (token: string) => {
     try {
-      // Add timeout to prevent infinite loading
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Request timeout')), 10000)
-      );
-
       const [jobsResponse, sessionsResponse] = await Promise.all([
-        Promise.race([
+        fetchWithTimeout(
           axios.get('http://localhost:5000/api/jobs', {
             headers: { Authorization: `Bearer ${token}` }
           }),
-          timeoutPromise
-        ]) as Promise<any>,
-        Promise.race([
+          8000
+        ) as Promise<any>,
+        fetchWithTimeout(
           axios.get('http://localhost:5000/api/screening/sessions', {
             headers: { Authorization: `Bearer ${token}` }
           }),
-          timeoutPromise
-        ]) as Promise<any>
+          8000
+        ) as Promise<any>
       ]);
 
       setJobs(jobsResponse.data.jobs || []);
       setSessions(sessionsResponse.data.sessions || []);
     } catch (err: any) {
       console.error('Failed to fetch dashboard data:', err);
-      // If unauthorized or forbidden, clear token and refresh
       if (err.response?.status === 401 || err.response?.status === 403) {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         setIsLoggedIn(false);
       }
-      // For other errors (network, timeout, etc.), still set loading to false
-      // so the user can see the page
     } finally {
       setLoading(false);
     }
@@ -218,6 +227,75 @@ export default function Home() {
               </div>
             </div>
           </div>
+        </section>
+
+        {/* Jobs Section */}
+        <section id="jobs" className="py-20 px-4 max-w-7xl mx-auto">
+          <div className="flex flex-col md:flex-row justify-between items-end mb-12">
+            <div>
+              <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-primary-100 text-primary-700 text-xs font-bold mb-4 border border-primary-200">
+                <span>NEW OPPORTUNITIES</span>
+              </div>
+              <h2 className="text-4xl font-black tracking-tight">Open Job <span className="gradient-text">Opportunities</span></h2>
+              <p className="text-slate-500 mt-4 max-w-xl">
+                Browse through the latest roles from top-tier companies. Our AI-driven platform matches you with the best opportunities based on your unique skills.
+              </p>
+            </div>
+            <button className="hidden md:flex items-center text-primary-600 font-bold group">
+              View All Jobs <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {jobs.length > 0 ? (
+              jobs.map((job) => (
+                <div key={job._id} className="glass-card p-6 flex flex-col h-full hover:-translate-y-2 transition-all duration-300 border-slate-200/50 group">
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="w-12 h-12 bg-white rounded-xl shadow-sm border border-slate-100 flex items-center justify-center text-xl font-bold text-primary-600">
+                      {job.company?.[0] || 'U'}
+                    </div>
+                    <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-xs font-bold uppercase tracking-wider">
+                      {job.workType}
+                    </span>
+                  </div>
+                  
+                  <h3 className="text-xl font-bold mb-1 group-hover:text-primary-600 transition-colors uppercase">{job.title}</h3>
+                  <p className="text-primary-600 font-bold text-sm mb-4">{job.company || 'Umurava Africa'}</p>
+                  
+                  <div className="flex flex-wrap gap-2 mb-6 flex-grow">
+                    {job.skills.slice(0, 4).map((skill, index) => (
+                      <span key={index} className="px-3 py-1 bg-primary-50 text-primary-600 rounded-lg text-xs font-medium border border-primary-100">
+                        {skill}
+                      </span>
+                    ))}
+                    {job.skills.length > 4 && (
+                      <span className="px-3 py-1 bg-slate-50 text-slate-500 rounded-lg text-xs font-medium border border-slate-100">
+                        +{job.skills.length - 4} more
+                      </span>
+                    )}
+                  </div>
+                  
+                  <button 
+                    onClick={() => window.location.href = `/jobs/${job._id}`}
+                    className="w-full py-3 bg-white border-2 border-primary-600 text-primary-600 rounded-xl font-bold hover:bg-primary-600 hover:text-white transition-all active:scale-95 flex items-center justify-center group"
+                  >
+                    Apply Now
+                    <ArrowRight className="ml-2 w-4 h-4 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
+                  </button>
+                </div>
+              ))
+            ) : (
+              <div className="col-span-full py-20 text-center glass-card">
+                <Briefcase className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+                <h3 className="text-xl font-bold text-slate-600">No active jobs found</h3>
+                <p className="text-slate-400 mt-2">Check back later for new opportunities.</p>
+              </div>
+            )}
+          </div>
+          
+          <button className="md:hidden w-full mt-10 py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold flex items-center justify-center">
+            View All Jobs <ArrowRight className="ml-2 w-5 h-5" />
+          </button>
         </section>
 
         {/* Stats Section */}

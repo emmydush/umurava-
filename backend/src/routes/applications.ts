@@ -13,7 +13,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 const router = express.Router();
 
 // Application CRUD operations
-router.post('/', authenticateToken, requireRole(['recruiter', 'admin']), createApplication);
+router.post('/', authenticateToken, requireRole(['talent', 'recruiter', 'admin']), createApplication);
 router.post('/bulk', authenticateToken, requireRole(['recruiter', 'admin']), bulkCreateApplications);
 router.get('/', authenticateToken, getApplications);
 router.get('/:id', authenticateToken, getApplicationById);

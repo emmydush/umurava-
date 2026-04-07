@@ -1,7 +1,7 @@
 import { JDParserService, ParsedJobDescription } from './jdParserService';
 import { CandidateAnalyzerService, AnalyzedCandidate } from './candidateAnalyzerService';
 import { ScoringEngineService, CandidateScore, RankingResult } from './scoringEngineService';
-import { IJobPosting, ITalentProfile, IApplication } from '../types';
+import { IJobPosting, ITalentProfile, IApplication, IParsedCandidateProfile } from '../types';
 import { JobPosting, TalentProfile, Application as ApplicationModel, ScreeningResult } from '../models';
 
 export interface PipelineInput {
@@ -25,6 +25,7 @@ export interface CandidateProcessingResult {
   candidateId: string;
   candidateName: string;
   analyzedCandidate: AnalyzedCandidate;
+  parsedCandidateProfile: IParsedCandidateProfile | null;
   score: CandidateScore;
   processingTime: number;
   error?: string;
@@ -52,12 +53,38 @@ export class AIPipelineService {
         throw new Error(`Job posting not found: ${input.jobId}`);
       }
 
-      // Step 2: Parse job description to get ideal profile
+      // Step 2: Parse job description to get ideal profile or use stored extracted requirements
       const jobPostingObject = jobPosting.toObject();
-      const parsedJD = await this.jdParser.enhanceJobPosting({
-        ...jobPostingObject,
-        _id: jobPosting._id.toString()
-      });
+      let enhancedJob;
+      if (jobPostingObject.extractedRequirements) {
+        const extracted = jobPostingObject.extractedRequirements;
+        enhancedJob = {
+          ...jobPostingObject,
+          idealProfile: {
+            experience: `${extracted.experience.minimum}+ years${extracted.experience.preferred > extracted.experience.minimum ? ` (preferably ${extracted.experience.preferred}+)` : ''}`,
+            education: extracted.education.level === 'none'
+              ? 'No specific education requirement'
+              : `${extracted.education.level} degree${extracted.education.field ? ` in ${extracted.education.field}` : ''} required`,
+            skills: extracted.requiredSkills,
+            qualifications: extracted.qualifications,
+            personalityTraits: extracted.cultureFit.workStyle,
+            certifications: []
+          }
+        };
+      } else {
+        enhancedJob = await this.jdParser.enhanceJobPosting({
+          ...jobPostingObject,
+          _id: jobPosting._id.toString()
+        });
+      }
+
+      // Create parsedJD from enhanced job
+      const parsedJD = enhancedJob.idealProfile ? 
+        this.createParsedJDFromIdealProfile(enhancedJob.idealProfile) : 
+        this.createFallbackParsedJD({
+          ...jobPosting.toObject(),
+          _id: jobPosting._id.toString()
+        });
       
       // Step 3: Get candidates to process
       const candidates = await this.getCandidatesForJob(input.jobId, input.candidateIds);
@@ -71,12 +98,16 @@ export class AIPipelineService {
       
       for (const candidate of candidates) {
         try {
+          const parsedCandidateProfile = await this.candidateAnalyzer.normalizeCandidateProfile(
+            candidate,
+            candidate.resumeFile ? `uploads/${candidate.resumeFile.filename}` : undefined,
+            candidate.resumeFile ? candidate.resumeFile.originalName : undefined
+          );
+
           const result = await this.processSingleCandidate(
             candidate,
-            parsedJD.idealProfile ? this.createParsedJDFromIdealProfile(parsedJD.idealProfile) : this.createFallbackParsedJD({
-              ...jobPosting.toObject(),
-              _id: jobPosting._id.toString()
-            })
+            parsedCandidateProfile,
+            parsedJD
           );
           processingResults.push(result);
         } catch (error) {
@@ -89,6 +120,7 @@ export class AIPipelineService {
             candidateId: candidate._id!.toString(),
             candidateName: `${candidate.firstName} ${candidate.lastName}`,
             analyzedCandidate: {} as AnalyzedCandidate,
+            parsedCandidateProfile: null,
             score: {} as CandidateScore,
             processingTime: 0,
             error: errorMessage
@@ -100,18 +132,12 @@ export class AIPipelineService {
       const successfulResults = processingResults.filter(r => !r.error);
       const candidatesForRanking = successfulResults.map(result => ({
         candidate: result.analyzedCandidate,
+        parsedProfile: result.parsedCandidateProfile,
         name: result.candidateName,
         id: result.candidateId
       }));
 
-      const parsedJDForScoring = parsedJD.idealProfile ? 
-        this.createParsedJDFromIdealProfile(parsedJD.idealProfile) : 
-        this.createFallbackParsedJD({
-          ...jobPosting.toObject(),
-          _id: jobPosting._id.toString()
-        });
-
-      const ranking = await this.scoringEngine.rankCandidates(parsedJDForScoring, candidatesForRanking);
+      const ranking = await this.scoringEngine.rankCandidates(parsedJD, candidatesForRanking);
 
       // Step 6: Update applications with scores and rankings
       await this.updateApplicationScores(input.jobId, successfulResults, ranking.candidates);
@@ -140,6 +166,7 @@ export class AIPipelineService {
 
   async processSingleCandidate(
     candidate: ITalentProfile,
+    parsedCandidateProfile: IParsedCandidateProfile | null,
     parsedJD: ParsedJobDescription
   ): Promise<CandidateProcessingResult> {
     const startTime = Date.now();
@@ -164,6 +191,7 @@ export class AIPipelineService {
       const score = await this.scoringEngine.scoreCandidate(
         parsedJD,
         analyzedCandidate,
+        parsedCandidateProfile,
         `${candidate.firstName} ${candidate.lastName}`
       );
 
@@ -173,6 +201,7 @@ export class AIPipelineService {
         candidateId: candidate._id!.toString(),
         candidateName: `${candidate.firstName} ${candidate.lastName}`,
         analyzedCandidate,
+        parsedCandidateProfile,
         score,
         processingTime
       };
@@ -258,6 +287,8 @@ export class AIPipelineService {
     processingResults: CandidateProcessingResult[],
     rankedCandidates: any[]
   ): Promise<void> {
+    const shortlistCount = Math.min(20, Math.max(10, Math.ceil(rankedCandidates.length * 0.2)));
+
     for (const result of processingResults) {
       const rankedCandidate = rankedCandidates.find(c => c.candidateId === result.candidateId);
       if (rankedCandidate) {
@@ -279,8 +310,8 @@ export class AIPipelineService {
                   explanation: 'Education assessed during scoring process'
                 }
               },
-              status: rankedCandidate.score.recommendation === 'strong_shortlist' || 
-                      rankedCandidate.score.recommendation === 'shortlist' ? 'shortlisted' : 'screening',
+              status: 'scored',
+              inShortlist: rankedCandidate.rank <= shortlistCount,
               lastUpdated: new Date()
             }
           }

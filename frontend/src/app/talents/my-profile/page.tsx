@@ -65,7 +65,7 @@ export default function MyProfile() {
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      setProfile(response.data.talent);
+      setProfile(response.data.profile);
     } catch (err: any) {
       if (err.response?.status === 404) {
         setError('No talent profile found. Please create one first.');

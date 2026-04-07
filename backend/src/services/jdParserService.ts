@@ -1,30 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
-import { IJobPosting } from '../types';
+import { IJobPosting, IParsedJobDescription } from '../types';
 
-export interface ParsedJobDescription {
-  requiredSkills: string[];
-  niceToHaveSkills: string[];
-  seniorityLevel: 'junior' | 'mid' | 'senior' | 'lead' | 'principal' | 'executive';
-  domain: string;
-  idealCandidateSummary: string;
-  experience: {
-    minimum: number;
-    preferred: number;
-    unit: 'years';
-  };
-  education: {
-    required: boolean;
-    level: 'high_school' | 'associate' | 'bachelor' | 'master' | 'phd' | 'none';
-    field?: string;
-  };
-  responsibilities: string[];
-  qualifications: string[];
-  cultureFit: {
-    workStyle: string[];
-    teamEnvironment: string;
-    companyValues: string[];
-  };
-}
+export type ParsedJobDescription = IParsedJobDescription;
 
 export class JDParserService {
   private genAI: GoogleGenAI;

@@ -29,6 +29,12 @@ const JobPostingSchema = new Schema<IJobPostingDocument>({
     required: true,
     trim: true
   },
+  company: {
+    type: String,
+    required: true,
+    trim: true,
+    default: 'Umurava'
+  },
   description: {
     type: String,
     required: true
@@ -36,6 +42,10 @@ const JobPostingSchema = new Schema<IJobPostingDocument>({
   jdText: {
     type: String,
     trim: true
+  },
+  extractedRequirements: {
+    type: Schema.Types.Mixed,
+    default: {}
   },
   requirements: [{ type: String, trim: true }],
   responsibilities: [{ type: String, trim: true }],

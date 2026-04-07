@@ -6,17 +6,17 @@ interface ITalentProfileDocument extends Omit<ITalentProfile, '_id'>, Document {
 const ExperienceSchema = new Schema({
   company: { type: String, required: true },
   position: { type: String, required: true },
-  startDate: { type: Date, required: true },
-  endDate: { type: Date },
-  description: { type: String, required: true }
+  startDate: { type: Date, required: false },
+  endDate: { type: Date, required: false },
+  description: { type: String, required: false }
 }, { _id: false });
 
 const EducationSchema = new Schema({
   institution: { type: String, required: true },
   degree: { type: String, required: true },
   field: { type: String, required: true },
-  startDate: { type: Date, required: true },
-  endDate: { type: Date }
+  startDate: { type: Date, required: false },
+  endDate: { type: Date, required: false }
 }, { _id: false });
 
 const SalaryExpectationSchema = new Schema({
@@ -56,6 +56,10 @@ const TalentProfileSchema = new Schema<ITalentProfileDocument>({
   resumeUrl: { type: String, trim: true },
   resumeText: { type: String },
   resumeFile: { type: ResumeFileSchema },
+  parsedProfile: {
+    type: Schema.Types.Mixed,
+    default: {}
+  },
   specialties: [{ type: String, trim: true }],
   availability: {
     type: String,

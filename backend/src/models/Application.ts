@@ -35,7 +35,7 @@ const ApplicationSchema = new Schema<IApplicationDocument>({
   } as any,
   status: {
     type: String,
-    enum: ['pending', 'screening', 'shortlisted', 'rejected', 'hired'],
+    enum: ['pending_score', 'pending', 'scored', 'screening', 'under_review', 'shortlisted', 'rejected', 'hired'],
     default: 'pending'
   },
   appliedAt: {
@@ -57,6 +57,10 @@ const ApplicationSchema = new Schema<IApplicationDocument>({
   recruiterNotes: {
     type: String,
     trim: true
+  },
+  inShortlist: {
+    type: Boolean,
+    default: false
   },
   lastUpdated: {
     type: Date,

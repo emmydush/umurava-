@@ -34,7 +34,13 @@ export default function Register() {
       
       localStorage.setItem('token', response.data.token);
       localStorage.setItem('user', JSON.stringify(response.data.user));
-      router.push('/');
+      
+      // Redirect candidates to profile page to complete setup
+      if (response.data.user.role === 'talent') {
+        router.push('/talents/my-profile');
+      } else {
+        router.push('/');
+      }
     } catch (err: any) {
       setError(err.response?.data?.message || 'Registration failed. Please check your connection.');
     } finally {

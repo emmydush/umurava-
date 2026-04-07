@@ -4,38 +4,70 @@ import { AIPipelineService } from '../services/aiPipelineService';
 
 export const createApplication = async (req: Request & { user?: any }, res: Response) => {
   try {
-    const { jobId, candidateId } = req.body;
+    const { jobId, coverNote } = req.body;
     
-    // Check if job exists
+    if (!jobId) {
+      return res.status(400).json({ message: 'Job ID is required' });
+    }
+
+    // Get candidate's talent profile
+    const talentProfile = await TalentProfile.findOne({ userId: req.user._id });
+    if (!talentProfile) {
+      return res.status(404).json({ message: 'Talent profile not found. Please create a profile first.' });
+    }
+
+    // Check if job exists and is still open
     const job = await JobPosting.findById(jobId);
     if (!job) {
       return res.status(404).json({ message: 'Job not found' });
     }
 
-    // Check if candidate exists
-    const candidate = await TalentProfile.findById(candidateId);
-    if (!candidate) {
-      return res.status(404).json({ message: 'Candidate not found' });
+    if (!job.isActive) {
+      return res.status(400).json({ message: 'This job is no longer accepting applications' });
     }
 
     // Check if application already exists
-    const existingApplication = await Application.findOne({ jobId, candidateId });
+    const existingApplication = await Application.findOne({ 
+      jobId: jobId, 
+      candidateId: talentProfile._id 
+    } as any);
     if (existingApplication) {
-      return res.status(400).json({ message: 'Application already exists' });
+      return res.status(400).json({ message: 'You have already applied for this job' });
     }
 
     const application = new Application({
       jobId,
-      candidateId,
-      status: 'pending',
-      appliedAt: new Date()
+      candidateId: talentProfile._id,
+      status: 'pending_score', // Changed from 'pending' to 'pending_score' as per requirements
+      appliedAt: new Date(),
+      recruiterNotes: coverNote || null // Store cover note in recruiterNotes field
     });
 
     await application.save();
 
+    console.log(`Application created: ${application._id} - queuing for AI scoring`);
+    // Trigger background scoring for this new application
+    setImmediate(async () => {
+      try {
+        const aiPipeline = new AIPipelineService();
+        await aiPipeline.processJobApplications({
+          jobId: jobId.toString(),
+          candidateIds: [talentProfile._id!.toString()],
+          maxResults: 1
+        });
+      } catch (pipelineError) {
+        console.error(`Background AI scoring failed for application ${application._id}:`, pipelineError);
+      }
+    });
+
     res.status(201).json({
-      message: 'Application created successfully',
-      application
+      message: 'Application submitted successfully',
+      application: {
+        _id: application._id,
+        jobId: application.jobId,
+        status: application.status,
+        appliedAt: application.appliedAt
+      }
     });
   } catch (error) {
     console.error('Error creating application:', error);
@@ -201,7 +233,7 @@ export const updateApplicationStatus = async (req: Request & { user?: any }, res
     const { id } = req.params;
     const { status, recruiterNotes } = req.body;
     
-    if (!['pending', 'screening', 'shortlisted', 'rejected', 'hired'].includes(status)) {
+    if (!['pending', 'pending_score', 'scored', 'screening', 'under_review', 'shortlisted', 'rejected', 'hired'].includes(status)) {
       return res.status(400).json({ message: 'Invalid status' });
     }
 

@@ -9,8 +9,9 @@ export default function CreateJob() {
   const [formData, setFormData] = useState({
     title: '',
     description: '',
-    workType: 'full-time',
+    workType: 'fulltime',
     skills: '',
+    experience: '',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -81,16 +82,27 @@ export default function CreateJob() {
 
             <div className="grid grid-cols-2 gap-4">
                <div className="space-y-2">
+                <label className="text-xs font-black text-slate-500 uppercase tracking-widest ml-1">Experience Level</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g., 3-5 years, Senior, Mid-level"
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all font-medium"
+                  value={formData.experience}
+                  onChange={(e) => setFormData({ ...formData, experience: e.target.value })}
+                />
+              </div>
+
+               <div className="space-y-2">
                 <label className="text-xs font-black text-slate-500 uppercase tracking-widest ml-1">Employment Type</label>
                 <select
                   className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all font-bold text-slate-700 appearance-none bg-slate-50"
                   value={formData.workType}
                   onChange={(e) => setFormData({ ...formData, workType: e.target.value })}
                 >
-                  <option value="full-time">Full-Time</option>
-                  <option value="contract">Contract</option>
-                  <option value="part-time">Part-Time</option>
+                  <option value="fulltime">Full-Time</option>
                   <option value="freelance">Freelance</option>
+                  <option value="both">Both</option>
                 </select>
               </div>
 

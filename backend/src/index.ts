@@ -44,7 +44,10 @@ app.use((req: Request, res: Response) => {
   res.status(404).json({ message: 'Route not found' });
 });
 
-mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/umurava-ai-hackathon')
+mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/umurava-ai-hackathon', {
+    serverSelectionTimeoutMS: 3000,
+    connectTimeoutMS: 3000,
+  })
   .then(() => {
     console.log('Connected to MongoDB');
     app.listen(PORT, () => {

@@ -29,6 +29,9 @@ interface Job {
   isActive: boolean;
   createdAt: string;
   applicationsCount?: number;
+  pendingApplications?: number;
+  scoredApplications?: number;
+  shortlistedApplications?: number;
 }
 
 interface ScreeningSession {
@@ -50,6 +53,8 @@ export default function RecruiterDashboard({ userName }: { userName: string }) {
 
   useEffect(() => {
     fetchDashboardData();
+    const interval = setInterval(fetchDashboardData, 10000);
+    return () => clearInterval(interval);
   }, []);
 
   const fetchDashboardData = async () => {
@@ -66,7 +71,7 @@ export default function RecruiterDashboard({ userName }: { userName: string }) {
         setTimeout(() => reject(new Error('Request timeout')), 8000)
       );
 
-      const [jobsResponse, sessionsResponse] = await Promise.all([
+      const [jobsResponse, sessionsResponse, applicationsResponse] = await Promise.all([
         Promise.race([
           axios.get('http://localhost:5000/api/jobs', {
             headers: { Authorization: `Bearer ${token}` }
@@ -78,10 +83,41 @@ export default function RecruiterDashboard({ userName }: { userName: string }) {
             headers: { Authorization: `Bearer ${token}` }
           }),
           timeoutPromise
+        ]) as Promise<any>,
+        Promise.race([
+          axios.get('http://localhost:5000/api/applications', {
+            headers: { Authorization: `Bearer ${token}` }
+          }),
+          timeoutPromise
         ]) as Promise<any>
       ]);
 
-      setJobs(jobsResponse.data.jobs || []);
+      const jobs = jobsResponse.data.jobs || [];
+      const applications = applicationsResponse.data.applications || [];
+      
+      // Count applications per job
+      const jobsWithCounts = jobs.map((job: Job) => {
+        const jobApplications = applications.filter((app: any) => app.jobId === job._id);
+        const pendingCount = jobApplications.filter((app: any) => 
+          app.status === 'pending_score' || app.status === 'pending'
+        ).length;
+        const scoredCount = jobApplications.filter((app: any) => 
+          app.status === 'screening' || (app.status === 'under_review' && app.aiScore !== null)
+        ).length;
+        const shortlistedCount = jobApplications.filter((app: any) => 
+          app.status === 'shortlisted'
+        ).length;
+
+        return {
+          ...job,
+          applicationsCount: jobApplications.length,
+          pendingApplications: pendingCount,
+          scoredApplications: scoredCount,
+          shortlistedApplications: shortlistedCount
+        };
+      });
+
+      setJobs(jobsWithCounts);
       setSessions(sessionsResponse.data.sessions || []);
     } catch (err: any) {
       console.error('Failed to fetch dashboard data:', err);
@@ -197,6 +233,12 @@ export default function RecruiterDashboard({ userName }: { userName: string }) {
             trend="+18%" 
           />
           <StatCard 
+            title="Scored So Far" 
+            value={jobs.reduce((sum, job) => sum + (job.scoredApplications || 0), 0).toString()} 
+            icon={<Clock className="text-cyan-600" />} 
+            trend="live" 
+          />
+          <StatCard 
             title="Avg. Score" 
             value="78%" 
             icon={<TrendingUp className="text-orange-600" />} 
@@ -231,7 +273,10 @@ export default function RecruiterDashboard({ userName }: { userName: string }) {
                         <th className="px-6 py-3">Job Title</th>
                         <th className="px-6 py-3">Type</th>
                         <th className="px-6 py-3 text-center">Status</th>
-                        <th className="px-6 py-3 text-center">Candidates</th>
+                        <th className="px-6 py-3 text-center">Applications</th>
+                        <th className="px-6 py-3 text-center">Pending</th>
+                        <th className="px-6 py-3 text-center">Scored</th>
+                        <th className="px-6 py-3 text-center">Shortlisted</th>
                         <th className="px-6 py-3"></th>
                       </tr>
                     </thead>
@@ -254,9 +299,21 @@ export default function RecruiterDashboard({ userName }: { userName: string }) {
                           <td className="px-6 py-4 text-center">
                             <span className="text-sm font-bold text-slate-900">{job.applicationsCount || 0}</span>
                           </td>
+                          <td className="px-6 py-4 text-center">
+                            <span className="text-sm font-bold text-yellow-600">{job.pendingApplications || 0}</span>
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <span className="text-sm font-bold text-cyan-600">{job.scoredApplications || 0}</span>
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <span className="text-sm font-bold text-green-600">{job.shortlistedApplications || 0}</span>
+                          </td>
                           <td className="px-6 py-4 text-right">
-                            <button className="text-primary-600 text-xs font-bold opacity-0 group-hover:opacity-100 transition-opacity">
-                              Manage
+                            <button
+                              onClick={() => window.location.href = `/jobs/${job._id}/candidates`}
+                              className="text-primary-600 text-xs font-bold opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              View Shortlist
                             </button>
                           </td>
                         </tr>
@@ -400,7 +457,13 @@ function StatusBadge({ status }: { status: string }) {
     completed: 'bg-green-100 text-green-700',
     processing: 'bg-yellow-100 text-yellow-700',
     pending: 'bg-blue-100 text-blue-700',
-    failed: 'bg-red-100 text-red-700',
+    pending_score: 'bg-orange-100 text-orange-700',
+    under_review: 'bg-purple-100 text-purple-700',
+    screening: 'bg-indigo-100 text-indigo-700',
+    screenig: 'bg-indigo-100 text-indigo-700',
+    shortlisted: 'bg-emerald-100 text-emerald-700',
+    rejected: 'bg-red-100 text-red-700',
+    hired: 'bg-green-100 text-green-700',
   }[status] || 'bg-slate-100 text-slate-700';
 
   return (

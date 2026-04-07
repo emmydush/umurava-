@@ -1,5 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
-import { ITalentProfile } from '../types';
+import { ITalentProfile, IParsedCandidateProfile } from '../types';
 import { FileUploadService, ParsedResume } from './fileUploadService';
 
 export interface AnalyzedCandidate {
@@ -102,16 +102,144 @@ export class CandidateAnalyzerService {
     resumeFilePath?: string,
     resumeOriginalName?: string
   ): Promise<AnalyzedCandidate> {
+    await this.normalizeCandidateProfile(profile, resumeFilePath, resumeOriginalName);
+
     if (profile.source === 'umurava_platform' || profile.isStructured) {
       return this.analyzePlatformProfile(profile);
+    } else if (profile.resumeText) {
+      return this.analyzeResume(profile.resumeText);
     } else if (resumeFilePath && resumeOriginalName) {
       const parsedResume = await this.fileUploadService.parseResume(resumeFilePath, resumeOriginalName);
       return this.analyzeResume(parsedResume.text);
-    } else if (profile.resumeText) {
-      return this.analyzeResume(profile.resumeText);
     } else {
       throw new Error('No valid data source for candidate analysis');
     }
+  }
+
+  async normalizeCandidateProfile(
+    profile: ITalentProfile,
+    resumeFilePath?: string,
+    resumeOriginalName?: string
+  ): Promise<IParsedCandidateProfile> {
+    if (profile.parsedProfile) {
+      return profile.parsedProfile;
+    }
+
+    let parsedProfile: IParsedCandidateProfile;
+    if (profile.source === 'umurava_platform' || profile.isStructured) {
+      const yearsExp = this.calculateYearsOfExperience(profile.experience);
+      parsedProfile = {
+        source: 'platform',
+        skills: profile.skills || [],
+        yearsExp,
+        titles: [...new Set(profile.experience.map((exp) => exp.position).filter(Boolean))],
+        experience: profile.experience.map((exp) => ({
+          company: exp.company,
+          position: exp.position,
+          startDate: exp.startDate?.toISOString(),
+          endDate: exp.endDate?.toISOString(),
+          description: exp.description
+        })),
+        education: profile.education.map((edu) => ({
+          institution: edu.institution,
+          degree: edu.degree,
+          field: edu.field,
+          startDate: edu.startDate?.toISOString(),
+          endDate: edu.endDate?.toISOString()
+        })),
+        summary: profile.summary,
+        contact: {
+          email: profile.email,
+          phone: profile.phone,
+          location: profile.location
+        },
+        lastUpdated: new Date()
+      };
+    } else {
+      let parsedResume: ParsedResume | null = null;
+
+      if (profile.resumeText) {
+        parsedResume = await this.fileUploadService.parseResumeText(profile.resumeText);
+      } else if (resumeFilePath && resumeOriginalName) {
+        parsedResume = await this.fileUploadService.parseResume(resumeFilePath, resumeOriginalName);
+      }
+
+      const skills = parsedResume?.extractedData?.skills || [];
+      const titles = (parsedResume?.extractedData?.experience || []).map((exp) => exp.position || '').filter(Boolean);
+      parsedProfile = {
+        source: 'resume',
+        skills,
+        yearsExp: this.estimateYearsFromExperience(parsedResume?.extractedData?.experience || []),
+        titles,
+        experience: parsedResume?.extractedData?.experience?.map((exp) => ({
+          company: exp.company,
+          position: exp.position,
+          duration: exp.duration,
+          description: exp.position || undefined
+        })) || [],
+        education: parsedResume?.extractedData?.education?.map((edu) => ({
+          institution: edu.institution,
+          degree: edu.degree,
+          field: edu.field
+        })) || [],
+        summary: undefined,
+        contact: {
+          email: parsedResume?.extractedData?.email,
+          phone: parsedResume?.extractedData?.phone,
+          location: profile.location
+        },
+        lastUpdated: new Date()
+      };
+    }
+
+    (profile as any).parsedProfile = parsedProfile;
+    if (typeof (profile as any).save === 'function') {
+      try {
+        await (profile as any).save();
+      } catch (saveError) {
+        console.warn('Could not persist normalized candidate profile:', saveError);
+      }
+    }
+
+    return parsedProfile;
+  }
+
+  private calculateYearsOfExperience(experience: ITalentProfile['experience']): number {
+    const now = new Date();
+    let totalMonths = 0;
+
+    experience.forEach((exp) => {
+      if (exp.startDate) {
+        const start = new Date(exp.startDate);
+        const end = exp.endDate ? new Date(exp.endDate) : now;
+        if (!isNaN(start.getTime()) && !isNaN(end.getTime()) && end > start) {
+          totalMonths += Math.max(0, (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24 * 30));
+        }
+      }
+    });
+
+    return Math.round(totalMonths / 12);
+  }
+
+  private estimateYearsFromExperience(experience?: Array<{duration?: string}>): number {
+    if (!experience || experience.length === 0) {
+      return 0;
+    }
+
+    const years = experience.reduce((sum, exp) => {
+      const duration = exp.duration || '';
+      const yearMatch = duration.match(/(\d+)\s*years?/i);
+      if (yearMatch) {
+        return sum + parseInt(yearMatch[1], 10);
+      }
+      const monthMatch = duration.match(/(\d+)\s*months?/i);
+      if (monthMatch) {
+        return sum + parseInt(monthMatch[1], 10) / 12;
+      }
+      return sum;
+    }, 0);
+
+    return Math.round(years);
   }
 
   private buildProfileText(profile: ITalentProfile): string {
@@ -127,15 +255,15 @@ SPECIALTIES: ${profile.specialties.join(', ')}
 EXPERIENCE:
 ${profile.experience.map(exp => `
 - ${exp.position} at ${exp.company}
-  Duration: ${exp.startDate.toLocaleDateString()} - ${exp.endDate ? exp.endDate.toLocaleDateString() : 'Present'}
-  Description: ${exp.description}
+  Duration: ${exp.startDate ? exp.startDate.toLocaleDateString() : 'Unknown'} - ${exp.endDate ? exp.endDate.toLocaleDateString() : 'Present'}
+  Description: ${exp.description || 'No description available'}
 `).join('\n')}
 
 EDUCATION:
 ${profile.education.map(edu => `
 - ${edu.degree} in ${edu.field}
   Institution: ${edu.institution}
-  Duration: ${edu.startDate.toLocaleDateString()} - ${edu.endDate ? edu.endDate.toLocaleDateString() : 'Present'}
+  Duration: ${edu.startDate ? edu.startDate.toLocaleDateString() : 'Unknown'} - ${edu.endDate ? edu.endDate.toLocaleDateString() : 'Present'}
 `).join('\n')}
 
 ADDITIONAL INFO:

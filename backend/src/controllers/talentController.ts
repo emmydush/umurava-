@@ -1,5 +1,18 @@
 import { Request, Response } from 'express';
 import { TalentProfile } from '../models';
+import { CandidateAnalyzerService } from '../services/candidateAnalyzerService';
+import { createCompleteTalentProfile } from '../examples/completeTalentProfile';
+import { ITalentProfile } from '../types';
+
+/**
+ * Convert MongoDB document to ITalentProfile interface
+ */
+function convertToITalentProfile(doc: any): ITalentProfile {
+  return {
+    ...doc.toObject(),
+    _id: doc._id?.toString()
+  };
+}
 
 export const createTalentProfile = async (req: Request & { user?: any }, res: Response) => {
   try {
@@ -20,8 +33,24 @@ export const createTalentProfile = async (req: Request & { user?: any }, res: Re
       message: 'Talent profile created successfully',
       profile
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error creating talent profile:', error);
+
+    if (error.name === 'ValidationError') {
+      const details = Object.values(error.errors).map((err: any) => err.message);
+      return res.status(400).json({
+        message: 'Talent profile validation failed',
+        details
+      });
+    }
+
+    if (error.code === 11000) {
+      return res.status(400).json({
+        message: 'Talent profile already exists for this user or duplicate field value',
+        duplicateKey: error.keyValue
+      });
+    }
+
     res.status(500).json({ message: 'Internal server error' });
   }
 };
@@ -143,6 +172,140 @@ export const getMyTalentProfile = async (req: Request & { user?: any }, res: Res
     });
   } catch (error) {
     console.error('Error getting talent profile:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+export const updateMyTalentProfile = async (req: Request & { user?: any }, res: Response) => {
+  try {
+    let profile = await TalentProfile.findOne({ userId: req.user._id.toString() });
+
+    if (!profile) {
+      // Create profile if it doesn't exist - need all required fields
+      const requiredFields = ['firstName', 'lastName', 'email', 'title', 'summary'];
+      const missingFields = requiredFields.filter(field => !req.body[field]);
+      
+      if (missingFields.length > 0) {
+        return res.status(400).json({ 
+          message: `Missing required fields for profile creation: ${missingFields.join(', ')}` 
+        });
+      }
+
+      profile = new TalentProfile({
+        ...req.body,
+        userId: req.user._id.toString()
+      });
+    } else {
+      // Update existing profile - only update provided fields
+      const allowedFields = [
+        'firstName', 'lastName', 'email', 'phone', 'location', 'title', 'summary',
+        'skills', 'specialties', 'experience', 'education', 'portfolio', 'linkedin', 
+        'github', 'workType', 'availability', 'salaryExpectation'
+      ];
+      
+      allowedFields.forEach(field => {
+        if (req.body[field] !== undefined && profile) {
+          (profile as any)[field] = req.body[field];
+        }
+      });
+    }
+
+    await profile.save();
+
+    res.json({
+      message: 'Talent profile updated successfully',
+      profile
+    });
+  } catch (error) {
+    console.error('Error updating talent profile:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+export const createCompleteProfile = async (req: Request & { user?: any }, res: Response) => {
+  try {
+    const existingProfile = await TalentProfile.findOne({ userId: req.user._id });
+    if (existingProfile) {
+      return res.status(400).json({ message: 'Talent profile already exists' });
+    }
+
+    // Create a complete profile with provided data or defaults
+    const profileData = createCompleteTalentProfile({
+      ...req.body,
+      userId: req.user._id,
+      source: 'umurava_platform',
+      isStructured: true
+    });
+
+    const profile = new TalentProfile(profileData);
+    await profile.save();
+
+    // Optionally analyze with AI if resume text is provided
+    if (req.body.resumeText || req.body.resumeFile) {
+      try {
+        const analyzerService = new CandidateAnalyzerService();
+        const profileData = convertToITalentProfile(profile);
+        const parsedProfile = await analyzerService.normalizeCandidateProfile(profileData);
+        
+        // Update profile with AI analysis
+        profile.parsedProfile = parsedProfile;
+        await profile.save();
+      } catch (aiError) {
+        console.warn('AI analysis failed:', aiError);
+        // Continue without AI analysis
+      }
+    }
+
+    res.status(201).json({
+      message: 'Complete talent profile created successfully',
+      profile
+    });
+  } catch (error: any) {
+    console.error('Error creating complete talent profile:', error);
+
+    if (error.name === 'ValidationError') {
+      const details = Object.values(error.errors).map((err: any) => err.message);
+      return res.status(400).json({
+        message: 'Talent profile validation failed',
+        details
+      });
+    }
+
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+export const getProfileWithAnalysis = async (req: Request & { user?: any }, res: Response) => {
+  try {
+    const { id } = req.params;
+    const profile = await TalentProfile.findById(id);
+
+    if (!profile) {
+      return res.status(404).json({ message: 'Talent profile not found' });
+    }
+
+    // Perform AI analysis if not already done
+    if (!profile.parsedProfile) {
+      try {
+        const analyzerService = new CandidateAnalyzerService();
+        const profileData = convertToITalentProfile(profile);
+        const parsedProfile = await analyzerService.normalizeCandidateProfile(profileData);
+        
+        profile.parsedProfile = parsedProfile;
+        await profile.save();
+      } catch (aiError) {
+        console.warn('AI analysis failed:', aiError);
+        // Continue without AI analysis
+      }
+    }
+
+    res.json({
+      message: 'Talent profile with analysis retrieved successfully',
+      profile,
+      analysis: profile.parsedProfile
+    });
+  } catch (error) {
+    console.error('Error getting talent profile with analysis:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
 };

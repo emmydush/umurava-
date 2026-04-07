@@ -30,6 +30,28 @@ export const authenticateToken = async (req: AuthRequest, res: Response, next: N
   }
 };
 
+export const optionalAuthenticateToken = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+
+    if (!token) {
+      return next();
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string };
+    const user = await User.findById(decoded.userId).select('-password');
+    
+    if (user) {
+      req.user = user;
+    }
+    next();
+  } catch (error) {
+    // If token is invalid, we just proceed as unauthenticated
+    next();
+  }
+};
+
 export const requireRole = (roles: string[]) => {
   return (req: AuthRequest, res: Response, next: NextFunction) => {
     if (!req.user) {

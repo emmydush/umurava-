@@ -36,51 +36,51 @@ export default function CandidateRankedView() {
     const fetchCandidates = async () => {
       dispatch(setLoading(true));
       try {
-        // Simulate API delay
-        await new Promise(resolve => setTimeout(resolve, 1200));
-        
-        const mockCandidates = [
-          {
-            _id: '1',
-            name: 'Sarah Chen',
-            matchScore: 94,
-            scoreBreakdown: { skills: 98, experience: 90, education: 85 },
-            rationale: 'Sarah possesses a rare combination of advanced Next.js prowess and proven experience in AI integration. Her contributions to open-source LLM benchmarking projects align perfectly with your technical roadmap.',
+        const token = localStorage.getItem('token');
+        if (!token) {
+          throw new Error('Authentication token not found');
+        }
+
+        const response = await axios.get(`http://localhost:5000/api/screening/shortlisted/${id}?limit=20`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        const shortlist = response.data.candidates || [];
+        const mappedCandidates = shortlist.map((result: any) => {
+          const talent = result.talentId || {};
+          const skillScores = Array.isArray(result.reasoning?.skills) ? result.reasoning.skills.map((item: any) => Number(item.relevance || 0)) : [];
+          const skillsAverage = skillScores.length > 0
+            ? Math.round(skillScores.reduce((sum: number, value: number) => sum + value, 0) / skillScores.length * 100)
+            : 0;
+
+          return {
+            _id: result._id,
+            name: `${talent.firstName || 'Candidate'} ${talent.lastName || ''}`.trim(),
+            matchScore: result.score || 0,
+            scoreBreakdown: {
+              skills: skillsAverage || Math.round((result.score || 0) * 0.7),
+              experience: Math.round((result.reasoning?.experience?.relevance || 0) * 100),
+              education: Math.round((result.reasoning?.education?.relevance || 0) * 100)
+            },
+            rationale: result.reasoning?.overall || 'No detailed explanation available.',
             status: 'pending' as const,
-            experienceLevel: 'Senior (7+ years)',
-            skills: ['React', 'Next.js', 'PyTorch', 'TypeScript'],
-          },
-          {
-            _id: '2',
-            name: 'Marcus Rodriguez',
-            matchScore: 88,
-            scoreBreakdown: { skills: 85, experience: 92, education: 80 },
-            rationale: 'Marcus is an exceptional system architect with deep expertise in distributed systems. While his specific Next.js experience is slightly lower, his ability to manage high-throughput data processing is a direct match for the Umurava backend requirements.',
-            status: 'pending' as const,
-            experienceLevel: 'Senior (8+ years)',
-            skills: ['Node.js', 'PostgreSQL', 'AWS', 'Kubernetes'],
-          },
-          {
-            _id: '3',
-            name: 'Elena Volkova',
-            matchScore: 82,
-            scoreBreakdown: { skills: 90, experience: 75, education: 95 },
-            rationale: 'Elena is a strong technical candidate with specialized academic research in human-AI interaction. She is recommended for her innovative approach to product interfaces, although she requires more exposure to large-scale production deployments.',
-            status: 'pending' as const,
-            experienceLevel: 'Mid-Level (4 years)',
-            skills: ['React', 'D3.js', 'UX Design', 'Figma'],
-          }
-        ];
-        
-        dispatch(setCandidates(mockCandidates));
-      } catch (err) {
-        dispatch(setError('Failed to retrieve candidate rankings.'));
+            experienceLevel: talent.title || 'N/A',
+            skills: talent.skills || []
+          };
+        });
+
+        dispatch(setCandidates(mappedCandidates));
+      } catch (err: any) {
+        console.error('Failed to retrieve candidate rankings:', err);
+        dispatch(setError(err.response?.data?.message || 'Failed to retrieve candidate rankings.'));
       } finally {
         dispatch(setLoading(false));
       }
     };
 
-    fetchCandidates();
+    if (id) {
+      fetchCandidates();
+    }
   }, [dispatch, id]);
 
   const filteredCandidates = candidates.filter(c => {
@@ -130,7 +130,7 @@ export default function CandidateRankedView() {
         <div className="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-6">
           <div>
             <button 
-              onClick={() => router.push('/')}
+              onClick={() => router.back()}
               className="flex items-center text-slate-500 hover:text-slate-900 transition-colors mb-4 group"
             >
               <ArrowLeft className="w-4 h-4 mr-2 group-hover:-translate-x-1 transition-transform" />
