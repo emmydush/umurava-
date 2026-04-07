@@ -1,13 +1,24 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import axios from 'axios';
 import { useRouter } from 'next/navigation';
+import TalentSidebar from '@/components/TalentSidebar';
+import {
+  Upload,
+  FileText,
+  CheckCircle,
+  AlertCircle,
+  Loader2,
+  X,
+  Eye,
+  ArrowRight
+} from 'lucide-react';
 
 export default function UploadResume() {
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [parsedData, setParsedData] = useState<any>(null);
   const [previewMode, setPreviewMode] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -15,57 +26,60 @@ export default function UploadResume() {
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
-    if (selectedFile) {
-      // Check file type
-      const allowedTypes = ['application/pdf', 'text/csv', 'application/vnd.ms-excel'];
-      if (!allowedTypes.includes(selectedFile.type) && !selectedFile.name.endsWith('.csv')) {
-        setError('Please upload a PDF or CSV file');
-        return;
-      }
+    if (!selectedFile) return;
 
-      // Check file size (5MB limit)
-      if (selectedFile.size > 5 * 1024 * 1024) {
-        setError('File size must be less than 5MB');
-        return;
-      }
+    const allowedTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/msword'];
+    const isDocx = selectedFile.name.toLowerCase().endsWith('.docx');
+    const isDoc = selectedFile.name.toLowerCase().endsWith('.doc');
+    if (!allowedTypes.includes(selectedFile.type) && !isDocx && !isDoc) {
+      setError('Please upload a PDF or DOCX file');
+      return;
+    }
+    if (selectedFile.size > 10 * 1024 * 1024) {
+      setError('File size must be less than 10MB');
+      return;
+    }
 
-      setFile(selectedFile);
-      setError('');
-      setParsedData(null);
+    setFile(selectedFile);
+    setError('');
+    setParsedData(null);
+    setPreviewMode(false);
+    setSuccess('');
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const dropped = e.dataTransfer.files[0];
+    if (dropped) {
+      const fakeEvent = { target: { files: [dropped] } } as any;
+      handleFileSelect(fakeEvent);
     }
   };
 
   const handlePreview = async () => {
     if (!file) return;
-
     setUploading(true);
     setError('');
-
     try {
       const token = localStorage.getItem('token');
-      if (!token) {
-        setError('Please login first');
-        return;
-      }
+      if (!token) { setError('Please login first'); return; }
 
       const formData = new FormData();
       formData.append('resume', file);
 
-      const response = await axios.post(
-        'http://localhost:5000/api/files/parse-resume',
-        formData,
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'multipart/form-data'
-          }
-        }
-      );
+      const response = await fetch('/api/files/parse-resume', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData
+      });
 
-      setParsedData(response.data.data);
+      const data = await response.json().catch(() => null);
+      if (!response.ok) { setError(data?.message || 'Failed to parse resume'); return; }
+
+      setParsedData(data?.data);
       setPreviewMode(true);
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to parse resume');
+    } catch {
+      setError('Failed to parse resume');
     } finally {
       setUploading(false);
     }
@@ -73,35 +87,28 @@ export default function UploadResume() {
 
   const handleUpload = async () => {
     if (!file) return;
-
     setUploading(true);
     setError('');
-
     try {
       const token = localStorage.getItem('token');
-      if (!token) {
-        setError('Please login first');
-        return;
-      }
+      if (!token) { setError('Please login first'); return; }
 
       const formData = new FormData();
       formData.append('resume', file);
 
-      const response = await axios.post(
-        'http://localhost:5000/api/files/upload-resume',
-        formData,
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'multipart/form-data'
-          }
-        }
-      );
+      const response = await fetch('/api/files/upload-resume', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData
+      });
 
-      alert('Resume uploaded and profile updated successfully!');
-      router.push('/talents/my-profile');
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to upload resume');
+      const data = await response.json().catch(() => null);
+      if (!response.ok) { setError(data?.message || 'Failed to upload resume'); return; }
+
+      setSuccess('Resume uploaded and profile updated successfully!');
+      setTimeout(() => router.push('/talents/my-profile'), 1500);
+    } catch {
+      setError('Failed to upload resume');
     } finally {
       setUploading(false);
     }
@@ -110,248 +117,198 @@ export default function UploadResume() {
   const resetForm = () => {
     setFile(null);
     setError('');
+    setSuccess('');
     setParsedData(null);
     setPreviewMode(false);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="bg-white shadow rounded-lg">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h1 className="text-2xl font-bold text-gray-900">Upload Resume</h1>
-            <p className="text-gray-600 mt-1">
-              Upload your resume (PDF or CSV) to automatically update your talent profile
-            </p>
-          </div>
-          
-          <div className="p-6">
-            {error && (
-              <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded mb-6">
-                {error}
-              </div>
-            )}
+    <div className="min-h-screen bg-slate-50">
+      <TalentSidebar />
 
-            {!previewMode ? (
-              <div className="space-y-6">
-                {/* File Upload Area */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-4">
-                    Select Resume File
-                  </label>
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept=".pdf,.csv"
-                      onChange={handleFileSelect}
-                      className="hidden"
-                    />
-                    
-                    {file ? (
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-center w-12 h-12 mx-auto bg-blue-100 rounded-full">
-                          <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                          </svg>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">{file.name}</p>
-                          <p className="text-xs text-gray-500">
-                            {(file.size / 1024 / 1024).toFixed(2)} MB
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={resetForm}
-                          className="text-sm text-red-600 hover:text-red-700"
-                        >
-                          Remove file
-                        </button>
-                      </div>
-                    ) : (
-                      <div>
-                        <div className="flex items-center justify-center w-12 h-12 mx-auto bg-gray-100 rounded-full">
-                          <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                          </svg>
-                        </div>
-                        <div className="mt-4">
-                          <button
-                            type="button"
-                            onClick={() => fileInputRef.current?.click()}
-                            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                          >
-                            Choose File
-                          </button>
-                          <p className="mt-2 text-xs text-gray-500">
-                            PDF or CSV files up to 5MB
-                          </p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
+      <div className="lg:ml-64 pt-14 lg:pt-0">
+        {/* Header */}
+        <header className="bg-white border-b border-slate-200 px-4 sm:px-8 py-5">
+          <h1 className="text-2xl font-black text-slate-900 tracking-tight">Resume</h1>
+          <p className="text-slate-500 text-sm mt-0.5">Upload your resume to automatically update your profile with AI</p>
+        </header>
 
-                {/* Action Buttons */}
-                {file && (
-                  <div className="flex space-x-4">
-                    <button
-                      onClick={handlePreview}
-                      disabled={uploading}
-                      className="flex-1 px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 disabled:opacity-50"
-                    >
-                      {uploading ? 'Parsing...' : 'Preview Extraction'}
-                    </button>
-                    <button
-                      onClick={handleUpload}
-                      disabled={uploading}
-                      className="flex-1 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50"
-                    >
-                      {uploading ? 'Uploading...' : 'Upload & Update Profile'}
-                    </button>
-                  </div>
-                )}
-              </div>
-            ) : (
-              /* Preview Mode */
-              <div className="space-y-6">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-lg font-medium text-gray-900">Extracted Information Preview</h3>
-                  <button
-                    onClick={resetForm}
-                    className="text-gray-600 hover:text-gray-900"
-                  >
-                    ← Back to Upload
-                  </button>
-                </div>
+        <main className="p-4 sm:p-8 max-w-3xl">
+          {!previewMode ? (
+            <div className="space-y-6">
+              {/* Upload Area */}
+              <div
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={handleDrop}
+                className={`bg-white rounded-3xl border-2 border-dashed p-10 text-center transition-all ${
+                  file ? 'border-primary-300 bg-primary-50/30' : 'border-slate-300 hover:border-primary-400 hover:bg-slate-50'
+                }`}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.doc,.docx"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
 
-                {parsedData && (
-                  <div className="space-y-6">
-                    {/* Contact Information */}
-                    {parsedData.extractedData && (
-                      <div className="bg-gray-50 rounded-lg p-4">
-                        <h4 className="text-sm font-medium text-gray-700 mb-3">Contact Information</h4>
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                          {parsedData.extractedData.firstName && (
-                            <div>
-                              <span className="text-gray-500">Name:</span>
-                              <span className="ml-2 text-gray-900">
-                                {parsedData.extractedData.firstName} {parsedData.extractedData.lastName}
-                              </span>
-                            </div>
-                          )}
-                          {parsedData.extractedData.email && (
-                            <div>
-                              <span className="text-gray-500">Email:</span>
-                              <span className="ml-2 text-gray-900">{parsedData.extractedData.email}</span>
-                            </div>
-                          )}
-                          {parsedData.extractedData.phone && (
-                            <div>
-                              <span className="text-gray-500">Phone:</span>
-                              <span className="ml-2 text-gray-900">{parsedData.extractedData.phone}</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Skills */}
-                    {parsedData.extractedData?.skills && parsedData.extractedData.skills.length > 0 && (
-                      <div className="bg-gray-50 rounded-lg p-4">
-                        <h4 className="text-sm font-medium text-gray-700 mb-3">Skills ({parsedData.extractedData.skills.length})</h4>
-                        <div className="flex flex-wrap gap-2">
-                          {parsedData.extractedData.skills.map((skill: string, index: number) => (
-                            <span key={index} className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded">
-                              {skill}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Experience */}
-                    {parsedData.extractedData?.experience && parsedData.extractedData.experience.length > 0 && (
-                      <div className="bg-gray-50 rounded-lg p-4">
-                        <h4 className="text-sm font-medium text-gray-700 mb-3">Work Experience</h4>
-                        <div className="space-y-2">
-                          {parsedData.extractedData.experience.map((exp: any, index: number) => (
-                            <div key={index} className="text-sm">
-                              <div className="font-medium text-gray-900">
-                                {exp.position} at {exp.company}
-                              </div>
-                              {exp.duration && (
-                                <div className="text-gray-600">{exp.duration}</div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Education */}
-                    {parsedData.extractedData?.education && parsedData.extractedData.education.length > 0 && (
-                      <div className="bg-gray-50 rounded-lg p-4">
-                        <h4 className="text-sm font-medium text-gray-700 mb-3">Education</h4>
-                        <div className="space-y-2">
-                          {parsedData.extractedData.education.map((edu: any, index: number) => (
-                            <div key={index} className="text-sm">
-                              <div className="font-medium text-gray-900">
-                                {edu.degree} in {edu.field}
-                              </div>
-                              <div className="text-gray-600">{edu.institution}</div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Resume Text Preview */}
-                    <div className="bg-gray-50 rounded-lg p-4">
-                      <h4 className="text-sm font-medium text-gray-700 mb-3">Resume Text Preview</h4>
-                      <div className="text-sm text-gray-600 max-h-40 overflow-y-auto">
-                        {parsedData.text.substring(0, 500)}...
-                      </div>
+                {uploading ? (
+                  <div className="flex flex-col items-center space-y-4">
+                    <div className="relative">
+                      <Loader2 className="w-16 h-16 text-primary-600 animate-spin" />
                     </div>
+                    <p className="font-bold text-slate-900">Gemini AI is analyzing your resume...</p>
+                    <p className="text-xs text-slate-400 uppercase tracking-widest font-bold">Identifying skills & experience</p>
+                  </div>
+                ) : file ? (
+                  <div className="flex flex-col items-center space-y-4">
+                    <div className="w-16 h-16 bg-primary-100 rounded-2xl flex items-center justify-center">
+                      <FileText className="w-8 h-8 text-primary-600" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-slate-900">{file.name}</p>
+                      <p className="text-xs text-slate-400 mt-1">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                    </div>
+                    <button onClick={resetForm} className="flex items-center space-x-1 text-xs text-slate-400 hover:text-red-500 transition-colors font-bold">
+                      <X className="w-3.5 h-3.5" /><span>Remove</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center space-y-4">
+                    <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center">
+                      <Upload className="w-8 h-8 text-slate-400" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-slate-900">Drag & drop your resume here</p>
+                      <p className="text-sm text-slate-400 mt-1">PDF or DOCX, up to 10MB</p>
+                    </div>
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-6 py-2.5 bg-primary-600 text-white rounded-xl font-bold text-sm hover:bg-primary-700 transition-all shadow-lg shadow-primary-500/20 active:scale-95"
+                    >
+                      Browse Files
+                    </button>
                   </div>
                 )}
+              </div>
 
-                {/* Action Buttons */}
-                <div className="flex space-x-4">
+              {/* Alerts */}
+              {error && (
+                <div className="flex items-start space-x-3 bg-red-50 border border-red-200 text-red-700 px-5 py-4 rounded-2xl">
+                  <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+                  <p className="text-sm font-medium">{error}</p>
+                </div>
+              )}
+              {success && (
+                <div className="flex items-start space-x-3 bg-green-50 border border-green-200 text-green-700 px-5 py-4 rounded-2xl">
+                  <CheckCircle className="w-5 h-5 shrink-0 mt-0.5" />
+                  <p className="text-sm font-bold">{success}</p>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              {file && !uploading && (
+                <div className="flex flex-col sm:flex-row gap-3">
                   <button
-                    onClick={resetForm}
-                    className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                    onClick={handlePreview}
+                    className="flex-1 flex items-center justify-center space-x-2 px-5 py-3 bg-white border border-slate-200 text-slate-700 rounded-2xl font-bold text-sm hover:bg-slate-50 transition-all"
                   >
-                    Choose Different File
+                    <Eye className="w-4 h-4" />
+                    <span>Preview Extracted Data</span>
                   </button>
                   <button
                     onClick={handleUpload}
-                    disabled={uploading}
-                    className="flex-1 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50"
+                    className="flex-1 flex items-center justify-center space-x-2 px-5 py-3 bg-primary-600 text-white rounded-2xl font-bold text-sm hover:bg-primary-700 transition-all shadow-lg shadow-primary-500/20 active:scale-95"
                   >
-                    {uploading ? 'Uploading...' : 'Upload & Update Profile'}
+                    <Upload className="w-4 h-4" />
+                    <span>Upload & Update Profile</span>
                   </button>
                 </div>
-              </div>
-            )}
-          </div>
-        </div>
+              )}
 
-        {/* Instructions */}
-        <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <h3 className="text-sm font-medium text-blue-800 mb-2">Upload Instructions</h3>
-          <ul className="text-sm text-blue-700 space-y-1">
-            <li>• Upload PDF or CSV files containing your resume information</li>
-            <li>• Maximum file size: 5MB</li>
-            <li>• The system will automatically extract skills, experience, and education</li>
-            <li>• Preview the extracted data before updating your profile</li>
-            <li>• Your existing profile will be enhanced with the extracted information</li>
-          </ul>
-        </div>
+              {/* Instructions */}
+              <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5">
+                <h3 className="text-sm font-bold text-blue-800 mb-2">How it works</h3>
+                <ul className="text-sm text-blue-700 space-y-1.5">
+                  <li>• Upload a PDF or DOCX resume (up to 10MB)</li>
+                  <li>• Our Gemini AI extracts your skills, experience, and education</li>
+                  <li>• Your profile is automatically updated with the extracted data</li>
+                  <li>• Use "Preview" first to review what gets extracted</li>
+                </ul>
+              </div>
+            </div>
+          ) : (
+            /* Preview Mode */
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-black text-slate-900">Extracted Information Preview</h2>
+                <button onClick={resetForm} className="text-sm font-bold text-slate-500 hover:text-slate-900 transition-colors">
+                  ← Back
+                </button>
+              </div>
+
+              {parsedData && (
+                <div className="space-y-4">
+                  {parsedData.extractedData?.firstName && (
+                    <div className="bg-white rounded-2xl border border-slate-200 p-5">
+                      <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">Contact Information</h4>
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div><span className="text-slate-400">Name:</span> <span className="font-bold">{parsedData.extractedData.firstName} {parsedData.extractedData.lastName}</span></div>
+                        {parsedData.extractedData.email && <div><span className="text-slate-400">Email:</span> <span className="font-bold">{parsedData.extractedData.email}</span></div>}
+                        {parsedData.extractedData.phone && <div><span className="text-slate-400">Phone:</span> <span className="font-bold">{parsedData.extractedData.phone}</span></div>}
+                      </div>
+                    </div>
+                  )}
+                  {parsedData.extractedData?.skills?.length > 0 && (
+                    <div className="bg-white rounded-2xl border border-slate-200 p-5">
+                      <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">Skills ({parsedData.extractedData.skills.length})</h4>
+                      <div className="flex flex-wrap gap-2">
+                        {parsedData.extractedData.skills.map((skill: string, i: number) => (
+                          <span key={i} className="px-3 py-1 bg-primary-50 text-primary-700 text-xs font-bold rounded-lg border border-primary-100">{skill}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {parsedData.extractedData?.experience?.length > 0 && (
+                    <div className="bg-white rounded-2xl border border-slate-200 p-5">
+                      <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">Work Experience</h4>
+                      <div className="space-y-2">
+                        {parsedData.extractedData.experience.map((exp: any, i: number) => (
+                          <div key={i} className="text-sm">
+                            <span className="font-bold text-slate-900">{exp.position}</span>
+                            {exp.company && <span className="text-slate-500"> at {exp.company}</span>}
+                            {exp.duration && <p className="text-xs text-slate-400">{exp.duration}</p>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex gap-3">
+                <button onClick={resetForm} className="flex-1 px-5 py-3 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 hover:bg-slate-50 transition-all">
+                  Choose Different File
+                </button>
+                <button
+                  onClick={handleUpload}
+                  disabled={uploading}
+                  className="flex-1 flex items-center justify-center space-x-2 px-5 py-3 bg-primary-600 text-white rounded-2xl font-bold text-sm hover:bg-primary-700 transition-all shadow-lg shadow-primary-500/20 active:scale-95 disabled:opacity-50"
+                >
+                  {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
+                  <span>{uploading ? 'Uploading...' : 'Upload & Update Profile'}</span>
+                </button>
+              </div>
+              {error && (
+                <div className="flex items-start space-x-3 bg-red-50 border border-red-200 text-red-700 px-5 py-4 rounded-2xl">
+                  <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+                  <p className="text-sm font-medium">{error}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </main>
       </div>
     </div>
   );

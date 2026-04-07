@@ -1,7 +1,8 @@
 import { GoogleGenAI } from '@google/genai';
 import { ITalentProfile, IJobPosting } from '../types';
+import { config } from '../config';
 
-const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+const genAI = new GoogleGenAI({ apiKey: config.geminiApiKey });
 
 export class GeminiService {
   async analyzeCandidate(job: IJobPosting, candidate: ITalentProfile): Promise<{
@@ -227,7 +228,62 @@ Provide a concise summary (2-3 paragraphs) explaining the overall quality of the
         return `Generated summary for ${shortlistedCandidates.length} shortlisted candidates. These candidates have been selected based on their strong alignment with job requirements, relevant skills, and experience. Each candidate demonstrates potential for success in this role.`;
       }
       
+      
       return 'Unable to generate explanation at this time.';
+    }
+  }
+
+  async extractResumeData(text: string): Promise<any> {
+    const prompt = `
+Extract structured data from the following resume text. 
+Please return a JSON object exactly matching this structure (if information is missing, omit the field or leave as empty array). Extract ALL experience and education entries, not just a few:
+{
+  "firstName": "string",
+  "lastName": "string",
+  "email": "string",
+  "phone": "string",
+  "skills": ["string", "string"],
+  "experience": [
+    {
+      "company": "string",
+      "position": "string",
+      "duration": "string"
+    }
+  ],
+  "education": [
+    {
+      "institution": "string",
+      "degree": "string",
+      "field": "string"
+    }
+  ]
+}
+
+RESUME TEXT:
+${text}
+`;
+
+    try {
+      const result = await genAI.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt
+      });
+      
+      if (!result || !result.text) {
+        throw new Error('Invalid response from Gemini API');
+      }
+      
+      const textResponse = result.text;
+      const jsonMatch = textResponse.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+         throw new Error('No JSON found in response');
+      }
+      
+      return JSON.parse(jsonMatch[0]);
+    } catch (error: any) {
+      console.error('Failed to extract resume data with Gemini:', error);
+      // Fallback or explicit throw
+      throw error;
     }
   }
 }

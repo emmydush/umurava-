@@ -1,24 +1,17 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { 
   Briefcase, 
   Users, 
   CheckCircle, 
-  ArrowRight, 
-  Zap, 
-  Plus,
-  FileText,
-  Upload,
-  BarChart3,
-  LogOut,
-  Menu,
-  X,
   TrendingUp,
   Clock,
-  Target
+  ChevronRight,
+  MoreVertical
 } from 'lucide-react';
+import RecruiterSidebar from './RecruiterSidebar';
 
 interface Job {
   _id: string;
@@ -49,97 +42,64 @@ export default function RecruiterDashboard({ userName }: { userName: string }) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [sessions, setSessions] = useState<ScreeningSession[]>([]);
   const [loading, setLoading] = useState(true);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     fetchDashboardData();
-    const interval = setInterval(fetchDashboardData, 10000);
+    const interval = setInterval(fetchDashboardData, 15000); // 15s instead of 10s to be kinder on load
     return () => clearInterval(interval);
   }, []);
 
   const fetchDashboardData = async () => {
     try {
       const token = localStorage.getItem('token');
-      
       if (!token) {
         setLoading(false);
         return;
       }
 
-      // Add timeout to prevent infinite loading
       const timeoutPromise = new Promise((_, reject) => 
         setTimeout(() => reject(new Error('Request timeout')), 8000)
       );
 
       const [jobsResponse, sessionsResponse, applicationsResponse] = await Promise.all([
         Promise.race([
-          axios.get('http://localhost:5000/api/jobs', {
-            headers: { Authorization: `Bearer ${token}` }
-          }),
+          axios.get('http://localhost:5000/api/jobs', { headers: { Authorization: `Bearer ${token}` } }),
           timeoutPromise
         ]) as Promise<any>,
         Promise.race([
-          axios.get('http://localhost:5000/api/screening/sessions', {
-            headers: { Authorization: `Bearer ${token}` }
-          }),
+          axios.get('http://localhost:5000/api/screening/sessions', { headers: { Authorization: `Bearer ${token}` } }),
           timeoutPromise
         ]) as Promise<any>,
         Promise.race([
-          axios.get('http://localhost:5000/api/applications', {
-            headers: { Authorization: `Bearer ${token}` }
-          }),
+          axios.get('http://localhost:5000/api/applications', { headers: { Authorization: `Bearer ${token}` } }),
           timeoutPromise
         ]) as Promise<any>
       ]);
 
-      const jobs = jobsResponse.data.jobs || [];
+      const jobsData = jobsResponse.data.jobs || [];
       const applications = applicationsResponse.data.applications || [];
       
-      // Count applications per job
-      const jobsWithCounts = jobs.map((job: Job) => {
-        const jobApplications = applications.filter((app: any) => app.jobId === job._id);
-        const pendingCount = jobApplications.filter((app: any) => 
-          app.status === 'pending_score' || app.status === 'pending'
-        ).length;
-        const scoredCount = jobApplications.filter((app: any) => 
-          app.status === 'screening' || (app.status === 'under_review' && app.aiScore !== null)
-        ).length;
-        const shortlistedCount = jobApplications.filter((app: any) => 
-          app.status === 'shortlisted'
-        ).length;
+      const jobsWithCounts = jobsData.map((job: Job) => {
+        const jobApps = applications.filter((app: any) => app.jobId === job._id);
+        const pending = jobApps.filter((app: any) => app.status === 'pending_score' || app.status === 'pending').length;
+        const scored = jobApps.filter((app: any) => app.status === 'screening' || (app.status === 'under_review' && app.aiScore !== null)).length;
+        const shortlisted = jobApps.filter((app: any) => app.status === 'shortlisted').length;
 
-        return {
-          ...job,
-          applicationsCount: jobApplications.length,
-          pendingApplications: pendingCount,
-          scoredApplications: scoredCount,
-          shortlistedApplications: shortlistedCount
-        };
+        return { ...job, applicationsCount: jobApps.length, pendingApplications: pending, scoredApplications: scored, shortlistedApplications: shortlisted };
       });
 
       setJobs(jobsWithCounts);
       setSessions(sessionsResponse.data.sessions || []);
     } catch (err: any) {
       console.error('Failed to fetch dashboard data:', err);
-      if (err.response?.status === 401 || err.response?.status === 403) {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        window.location.reload();
-      }
     } finally {
       setLoading(false);
     }
   };
 
-  const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    window.location.reload();
-  };
-
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <div className="w-16 h-16 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin"></div>
       </div>
     );
@@ -147,114 +107,47 @@ export default function RecruiterDashboard({ userName }: { userName: string }) {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Sidebar Navigation */}
-      <aside className="fixed left-0 top-0 bottom-0 w-64 bg-white border-r border-slate-200 hidden lg:flex flex-col z-50">
-        <div className="p-6">
-          <div className="flex items-center space-x-2 mb-10">
-            <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
-              <Zap className="text-white w-5 h-5 fill-current" />
-            </div>
-            <span className="text-xl font-bold">Umurava<span className="text-primary-600">AI</span></span>
-          </div>
+      <RecruiterSidebar />
 
-          <nav className="space-y-1">
-            <NavItem icon={<BarChart3 />} label="Analytics" active onClick={() => {}} />
-            <NavItem icon={<Briefcase />} label="Job Postings" onClick={() => window.location.href = '/'} />
-            <NavItem icon={<Users />} label="Candidates" onClick={() => window.location.href = '/jobs/demo-job-id/candidates'} />
-            <NavItem icon={<Target />} label="Screenings" onClick={() => {}} />
-            <NavItem icon={<FileText />} label="Reports" onClick={() => {}} />
-          </nav>
-        </div>
-
-        <div className="mt-auto p-6 pb-12 border-t border-slate-100">
-          <div className="flex items-center space-x-3 mb-6">
-            <div className="w-10 h-10 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-bold">
-              {userName.charAt(0)}
-            </div>
-            <div>
-              <div className="text-sm font-bold text-slate-900 truncate max-w-[120px]">{userName}</div>
-              <div className="text-xs text-slate-500 capitalize">Recruiter</div>
-            </div>
-          </div>
-          <button 
-            onClick={logout}
-            className="flex items-center space-x-2 text-slate-500 hover:text-red-600 transition-colors text-sm font-medium w-full"
-          >
-            <LogOut className="w-4 h-4" />
-            <span>Logout</span>
-          </button>
-        </div>
-      </aside>
-
-      {/* Main Content Area */}
-      <main className="lg:ml-64 min-h-screen p-4 md:p-8">
-        <header className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
-          <div>
-            <h1 className="text-2xl font-black text-slate-900 tracking-tight">Welcome back, {userName}!</h1>
-            <p className="text-slate-500 text-sm mt-1">Here's what's happening with your recruitment funnel today.</p>
-          </div>
-          
-          <div className="flex flex-wrap gap-3">
-            <button 
-              onClick={() => window.location.href = '/jobs/create'}
-              className="flex items-center space-x-2 px-4 py-2 bg-primary-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-primary-500/10 hover:bg-primary-700 transition-all active:scale-95"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Create Job</span>
-            </button>
-            <button 
-              onClick={() => window.location.href = '/talents/upload-resume'}
-              className="flex items-center space-x-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl text-sm font-bold shadow-sm hover:bg-slate-50 transition-all active:scale-95"
-            >
-              <Upload className="w-4 h-4" />
-              <span>Upload Resume</span>
-            </button>
-          </div>
+      <main className="lg:ml-64 pt-14 lg:pt-0 min-h-screen p-4 sm:p-8">
+        <header className="mb-8">
+          <h1 className="text-2xl font-black text-slate-900 tracking-tight">Welcome back, {userName}!</h1>
+          <p className="text-slate-500 text-sm mt-1">Here's what's happening with your recruitment funnel today.</p>
         </header>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
           <StatCard 
             title="Active Jobs" 
             value={jobs.filter(j => j.isActive).length.toString()} 
-            icon={<Briefcase className="text-blue-600" />} 
-            trend="+12%" 
+            icon={<Briefcase className="text-blue-600 w-5 h-5 sm:w-6 sm:h-6" />} 
           />
           <StatCard 
-            title="Total Candidates" 
+            title="Candidates" 
             value={sessions.reduce((sum, s) => sum + s.totalCandidates, 0).toString()} 
-            icon={<Users className="text-purple-600" />} 
-            trend="+5%" 
+            icon={<Users className="text-purple-600 w-5 h-5 sm:w-6 sm:h-6" />} 
           />
           <StatCard 
             title="Shortlisted" 
             value={sessions.reduce((sum, s) => sum + s.shortlistedCount, 0).toString()} 
-            icon={<CheckCircle className="text-green-600" />} 
-            trend="+18%" 
+            icon={<CheckCircle className="text-green-600 w-5 h-5 sm:w-6 sm:h-6" />} 
           />
           <StatCard 
-            title="Scored So Far" 
-            value={jobs.reduce((sum, job) => sum + (job.scoredApplications || 0), 0).toString()} 
-            icon={<Clock className="text-cyan-600" />} 
-            trend="live" 
-          />
-          <StatCard 
-            title="Avg. Score" 
-            value="78%" 
-            icon={<TrendingUp className="text-orange-600" />} 
-            trend="+2%" 
+            title="Avg. Quality" 
+            value="85%" 
+            icon={<TrendingUp className="text-orange-600 w-5 h-5 sm:w-6 sm:h-6" />} 
           />
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-          {/* Main Section - Jobs */}
-          <div className="xl:col-span-2 space-y-8">
+          {/* Main List */}
+          <div className="xl:col-span-2 space-y-6 sm:space-y-8">
             <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-              <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+              <div className="px-5 sm:px-6 py-5 border-b border-slate-100 flex items-center justify-between">
                 <h2 className="font-bold text-slate-900">Recent Job Postings</h2>
                 <button className="text-xs font-bold text-primary-600 hover:underline">View all</button>
               </div>
-              <div className="p-0 overflow-x-auto">
+              <div className="p-0">
                 {jobs.length === 0 ? (
                   <div className="p-12 text-center text-slate-400">
                     <Briefcase className="w-12 h-12 mx-auto mb-4 opacity-10" />
@@ -267,147 +160,101 @@ export default function RecruiterDashboard({ userName }: { userName: string }) {
                     </button>
                   </div>
                 ) : (
-                  <table className="w-full text-left border-collapse">
-                    <thead className="bg-slate-50/50 text-slate-500 text-[10px] uppercase tracking-wider font-bold">
-                      <tr>
-                        <th className="px-6 py-3">Job Title</th>
-                        <th className="px-6 py-3">Type</th>
-                        <th className="px-6 py-3 text-center">Status</th>
-                        <th className="px-6 py-3 text-center">Applications</th>
-                        <th className="px-6 py-3 text-center">Pending</th>
-                        <th className="px-6 py-3 text-center">Scored</th>
-                        <th className="px-6 py-3 text-center">Shortlisted</th>
-                        <th className="px-6 py-3"></th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {jobs.slice(0, 5).map((job) => (
-                        <tr key={job._id} className="hover:bg-slate-50/50 transition-colors group">
-                          <td className="px-6 py-4">
-                            <div className="font-bold text-slate-900">{job.title}</div>
-                            <div className="text-xs text-slate-400 mt-0.5 truncate max-w-[250px]">{job.description}</div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className="px-2 py-1 bg-slate-100 text-slate-600 text-[10px] font-bold rounded-md uppercase tracking-tight">
-                              {job.workType}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <span className={`inline-flex h-2 w-2 rounded-full ${job.isActive ? 'bg-green-500' : 'bg-slate-300'} mr-2`}></span>
-                            <span className="text-xs font-medium text-slate-600 capitalize">{job.isActive ? 'Active' : 'Closed'}</span>
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <span className="text-sm font-bold text-slate-900">{job.applicationsCount || 0}</span>
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <span className="text-sm font-bold text-yellow-600">{job.pendingApplications || 0}</span>
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <span className="text-sm font-bold text-cyan-600">{job.scoredApplications || 0}</span>
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <span className="text-sm font-bold text-green-600">{job.shortlistedApplications || 0}</span>
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            <button
-                              onClick={() => window.location.href = `/jobs/${job._id}/candidates`}
-                              className="text-primary-600 text-xs font-bold opacity-0 group-hover:opacity-100 transition-opacity"
-                            >
-                              View Shortlist
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <div className="divide-y divide-slate-100">
+                    {jobs.slice(0, 5).map((job) => (
+                      <div key={job._id} className="p-4 sm:p-5 hover:bg-slate-50 transition-colors group cursor-pointer" onClick={() => window.location.href = `/jobs/${job._id}/candidates`}>
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1 min-w-0 pr-4">
+                            <h3 className="font-bold text-slate-900 truncate tracking-tight">{job.title}</h3>
+                            
+                            <div className="flex flex-wrap items-center gap-2 mt-1 mb-3">
+                              <span className={`inline-flex px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-tight ${job.isActive ? 'bg-green-100 text-green-700 w-fit' : 'bg-slate-100 text-slate-600 w-fit'}`}>
+                                {job.isActive ? 'Active' : 'Closed'}
+                              </span>
+                              <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md uppercase font-bold tracking-tight">
+                                {job.workType}
+                              </span>
+                            </div>
+
+                            {/* Metrics visible cleanly on Mobile and Desktop */}
+                            <div className="flex flex-wrap gap-2 sm:gap-4 text-xs font-bold font-mono">
+                              <span className="flex items-center text-slate-600 bg-slate-50 border border-slate-100 px-2 py-1 rounded-lg">
+                                <Users className="w-3.5 h-3.5 mr-1 text-slate-400" />
+                                {job.applicationsCount || 0} <span className="ml-1 text-[10px] uppercase font-sans text-slate-400 tracking-wider">Total</span>
+                              </span>
+                              <span className="flex items-center text-yellow-700 bg-yellow-50 border border-yellow-100 px-2 py-1 rounded-lg">
+                                <Clock className="w-3.5 h-3.5 mr-1" />
+                                {job.pendingApplications || 0} <span className="ml-1 text-[10px] uppercase font-sans tracking-wider">Pend</span>
+                              </span>
+                              <span className="flex items-center text-green-700 bg-green-50 border border-green-100 px-2 py-1 rounded-lg">
+                                <CheckCircle className="w-3.5 h-3.5 mr-1" />
+                                {job.shortlistedApplications || 0} <span className="ml-1 text-[10px] uppercase font-sans tracking-wider">Short</span>
+                              </span>
+                            </div>
+                          </div>
+                          <div className="shrink-0 flex items-center justify-center p-2 rounded-xl text-slate-400 bg-slate-50 group-hover:bg-primary-50 group-hover:text-primary-600 transition-colors">
+                            <ChevronRight className="w-5 h-5" />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             </div>
+          </div>
 
+          <div className="space-y-6 sm:space-y-8">
             {/* Recent Activity */}
             <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-              <div className="px-6 py-5 border-b border-slate-100">
+              <div className="px-5 sm:px-6 py-5 border-b border-slate-100">
                 <h2 className="font-bold text-slate-900">Recent Activity</h2>
               </div>
-              <div className="p-6 space-y-4">
+              <div className="p-5 sm:p-6 space-y-4">
                 {sessions.length === 0 ? (
                   <p className="text-center text-slate-400 text-sm py-4">No recent activity</p>
                 ) : (
                   sessions.slice(0, 3).map((session) => (
                     <div key={session._id} className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 border border-slate-100">
-                      <div className="flex items-center space-x-4">
-                        <div className="w-10 h-10 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-10 h-10 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center shrink-0">
                           <Users className="w-5 h-5" />
                         </div>
-                        <div>
-                          <div className="text-sm font-bold text-slate-900">
-                            {session.jobTitle || `Screening Session ${session._id.slice(-8)}`}
+                        <div className="min-w-0">
+                          <div className="text-sm font-bold text-slate-900 truncate">
+                            {session.jobTitle || `Screening ${session._id.slice(-4)}`}
                           </div>
-                          <div className="text-xs text-slate-400">
-                            {session.shortlistedCount} of {session.totalCandidates} candidates shortlisted
+                          <div className="text-[10px] text-slate-500 font-medium">
+                            {session.shortlistedCount} shortlisted
                           </div>
                         </div>
                       </div>
-                      <div className="text-right">
+                      <div className="text-right shrink-0">
                         <StatusBadge status={session.status} />
-                        <div className="text-xs text-slate-400 mt-1">
-                          {new Date(session.createdAt).toLocaleDateString()}
-                        </div>
                       </div>
                     </div>
                   ))
                 )}
               </div>
             </div>
-          </div>
 
-          {/* Sidebar - Quick Actions */}
-          <div className="space-y-6">
+            {/* Performance metrics */}
             <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-              <div className="px-6 py-5 border-b border-slate-100">
-                <h2 className="font-bold text-slate-900">Quick Actions</h2>
-              </div>
-              <div className="p-6 space-y-3">
-                <button 
-                  onClick={() => window.location.href = '/jobs/create'}
-                  className="w-full flex items-center space-x-3 px-4 py-3 bg-primary-600 text-white rounded-xl font-bold hover:bg-primary-700 transition-all"
-                >
-                  <Plus className="w-5 h-5" />
-                  <span>Create New Job</span>
-                </button>
-                <button 
-                  onClick={() => window.location.href = '/talents/upload-resume'}
-                  className="w-full flex items-center space-x-3 px-4 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold hover:bg-slate-200 transition-all"
-                >
-                  <Upload className="w-5 h-5" />
-                  <span>Upload Resumes</span>
-                </button>
-                <button 
-                  onClick={() => window.location.href = '/screening'}
-                  className="w-full flex items-center space-x-3 px-4 py-3 bg-white border border-slate-200 text-slate-700 rounded-xl font-bold hover:bg-slate-50 transition-all"
-                >
-                  <Target className="w-5 h-5" />
-                  <span>Start Screening</span>
-                </button>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-              <div className="px-6 py-5 border-b border-slate-100">
+              <div className="px-5 sm:px-6 py-5 border-b border-slate-100">
                 <h2 className="font-bold text-slate-900">Performance Metrics</h2>
               </div>
-              <div className="p-6 space-y-4">
+              <div className="p-5 sm:p-6 space-y-4">
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-slate-600">Time to Hire</span>
-                  <span className="text-sm font-bold text-green-600">-15%</span>
+                  <span className="text-sm text-slate-600 font-bold">Time to Hire</span>
+                  <span className="text-sm font-black text-green-600 bg-green-50 px-2 py-1 rounded-md">-15%</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-slate-600">Quality Score</span>
-                  <span className="text-sm font-bold text-primary-600">85%</span>
+                  <span className="text-sm text-slate-600 font-bold">Quality Match</span>
+                  <span className="text-sm font-black text-primary-600 bg-primary-50 px-2 py-1 rounded-md">85%</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-slate-600">Screening Efficiency</span>
-                  <span className="text-sm font-bold text-blue-600">92%</span>
+                  <span className="text-sm text-slate-600 font-bold">Screen Efficiency</span>
+                  <span className="text-sm font-black text-blue-600 bg-blue-50 px-2 py-1 rounded-md">92%</span>
                 </div>
               </div>
             </div>
@@ -418,36 +265,19 @@ export default function RecruiterDashboard({ userName }: { userName: string }) {
   );
 }
 
-function NavItem({ icon, label, active = false, onClick }: { icon: React.ReactNode, label: string, active?: boolean, onClick: () => void }) {
+function StatCard({ title, value, icon }: { title: string, value: string, icon: React.ReactNode }) {
   return (
-    <button 
-      onClick={onClick}
-      className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all ${
-        active 
-          ? 'bg-primary-50 text-primary-600 font-bold' 
-          : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900 font-medium'
-      }`}
-    >
-      <span className="w-5 h-5">{icon}</span>
-      <span className="text-sm">{label}</span>
-      {active && <div className="ml-auto w-1 h-4 bg-primary-600 rounded-full"></div>}
-    </button>
-  );
-}
-
-function StatCard({ title, value, icon, trend }: { title: string, value: string, icon: React.ReactNode, trend: string }) {
-  return (
-    <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm hover:shadow-md transition-all group">
-      <div className="flex justify-between items-start mb-4">
-        <div className="p-3 rounded-2xl bg-slate-50 group-hover:bg-white group-hover:scale-110 transition-all shadow-sm">
+    <div className="bg-white p-4 sm:p-6 rounded-3xl border border-slate-200 shadow-sm hover:shadow-md transition-all group">
+      <div className="flex justify-between items-start mb-3 sm:mb-4">
+        <div className="p-2 sm:p-3 rounded-2xl bg-slate-50 group-hover:bg-white transition-all shadow-sm">
           {icon}
         </div>
-        <span className="text-[10px] font-black text-green-600 bg-green-50 px-2 py-1 rounded-full">
-          {trend}
-        </span>
+        <button className="text-slate-300 hover:text-slate-500">
+          <MoreVertical className="w-4 h-4 sm:hidden" />
+        </button>
       </div>
-      <div className="text-2xl font-black text-slate-900 mb-1">{value}</div>
-      <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">{title}</div>
+      <div className="text-xl sm:text-2xl font-black text-slate-900 mb-1">{value}</div>
+      <div className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-tight sm:tracking-wider truncate">{title}</div>
     </div>
   );
 }
@@ -457,17 +287,12 @@ function StatusBadge({ status }: { status: string }) {
     completed: 'bg-green-100 text-green-700',
     processing: 'bg-yellow-100 text-yellow-700',
     pending: 'bg-blue-100 text-blue-700',
-    pending_score: 'bg-orange-100 text-orange-700',
-    under_review: 'bg-purple-100 text-purple-700',
-    screening: 'bg-indigo-100 text-indigo-700',
-    screenig: 'bg-indigo-100 text-indigo-700',
     shortlisted: 'bg-emerald-100 text-emerald-700',
-    rejected: 'bg-red-100 text-red-700',
     hired: 'bg-green-100 text-green-700',
   }[status] || 'bg-slate-100 text-slate-700';
 
   return (
-    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-tight ${styles}`}>
+    <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-tight ${styles}`}>
       {status}
     </span>
   );

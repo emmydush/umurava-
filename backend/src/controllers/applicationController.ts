@@ -10,10 +10,27 @@ export const createApplication = async (req: Request & { user?: any }, res: Resp
       return res.status(400).json({ message: 'Job ID is required' });
     }
 
-    // Get candidate's talent profile
-    const talentProfile = await TalentProfile.findOne({ userId: req.user._id });
+    // Get or create candidate's talent profile
+    let talentProfile = await TalentProfile.findOne({ userId: req.user._id });
+    
     if (!talentProfile) {
-      return res.status(404).json({ message: 'Talent profile not found. Please create a profile first.' });
+      // Auto-create a basic talent profile for the user
+      talentProfile = new TalentProfile({
+        userId: req.user._id,
+        firstName: req.user.firstName,
+        lastName: req.user.lastName,
+        email: req.user.email,
+        title: 'Job Seeker',
+        summary: 'Looking for new opportunities',
+        skills: [],
+        experience: [],
+        education: [],
+        completedScreenings: 0,
+        averageScore: 0
+      });
+      
+      await talentProfile.save();
+      console.log(`Auto-created talent profile for user: ${req.user._id}`);
     }
 
     // Check if job exists and is still open

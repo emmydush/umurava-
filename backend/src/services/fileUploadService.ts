@@ -1,7 +1,8 @@
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs/promises';
-import * as pdfParse from 'pdf-parse';
+const pdfParse = require('pdf-parse');
+import mammoth from 'mammoth';
 import csv from 'csv-parser';
 import { Readable } from 'stream';
 
@@ -53,13 +54,13 @@ export class FileUploadService {
     });
 
     const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-      const allowedTypes = ['.pdf', '.csv'];
+      const allowedTypes = ['.pdf', '.csv', '.docx'];
       const ext = path.extname(file.originalname).toLowerCase();
       
       if (allowedTypes.includes(ext)) {
         cb(null, true);
       } else {
-        cb(new Error('Only PDF and CSV files are allowed'));
+        cb(new Error('Only PDF, DOCX and CSV files are allowed'));
       }
     };
 
@@ -82,37 +83,79 @@ export class FileUploadService {
         text = await this.parsePDF(filePath);
       } else if (ext === '.csv') {
         text = await this.parseCSV(filePath);
+      } else if (ext === '.docx') {
+        text = await this.parseDocx(filePath);
+      } else {
+        throw new Error('Unsupported file type for resume parsing');
       }
 
-      const extractedData = this.extractStructuredData(text);
+      let extractedData;
+      try {
+        const { GeminiService } = require('./geminiService');
+        const geminiService = new GeminiService();
+        extractedData = await geminiService.extractResumeData(text);
+      } catch (aiError) {
+        console.error('Gemini extraction failed, using fallback regex parsing', aiError);
+        extractedData = this.extractStructuredData(text);
+      }
       
       return {
         text,
         extractedData
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error parsing resume:', error);
-      throw new Error('Failed to parse resume file');
+      console.error('Error details:', {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      });
+      throw new Error(`Failed to parse resume file: ${error.message}`);
     }
   }
 
   async parseResumeText(text: string): Promise<ParsedResume> {
     try {
-      const extractedData = this.extractStructuredData(text);
+      let extractedData;
+      try {
+        const { GeminiService } = require('./geminiService');
+        const geminiService = new GeminiService();
+        extractedData = await geminiService.extractResumeData(text);
+      } catch (aiError) {
+        console.error('Gemini extraction failed, using fallback regex parsing', aiError);
+        extractedData = this.extractStructuredData(text);
+      }
+      
       return {
         text,
         extractedData
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error parsing resume text:', error);
       throw new Error('Failed to parse resume text');
     }
   }
 
   private async parsePDF(filePath: string): Promise<string> {
-    const dataBuffer = await fs.readFile(filePath);
-    const data = await (pdfParse as any)(dataBuffer);
-    return data.text;
+    try {
+      console.log('🔄 Parsing PDF file:', filePath);
+      const dataBuffer = await fs.readFile(filePath);
+      console.log('📄 PDF buffer size:', dataBuffer.length, 'bytes');
+
+      const data = await pdfParse(dataBuffer);
+      console.log('✅ PDF parsed successfully, text length:', data.text?.length || 0);
+      console.log('📝 PDF pages:', data.numpages);
+
+      return data.text || '';
+    } catch (error: any) {
+      console.error('❌ PDF parsing error:', error);
+      console.error('PDF error details:', {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      });
+      throw new Error(`PDF parsing failed: ${error.message}`);
+    }
   }
 
   private async parseCSV(filePath: string): Promise<string> {
@@ -131,6 +174,11 @@ export class FileUploadService {
         })
         .on('error', reject);
     });
+  }
+
+  private async parseDocx(filePath: string): Promise<string> {
+    const result = await mammoth.extractRawText({ path: filePath });
+    return result.value || '';
   }
 
   private extractStructuredData(text: string): ParsedResume['extractedData'] {

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import axios from 'axios';
+// import axios from 'axios';
 import { Zap, ArrowLeft, Send, Loader2 } from 'lucide-react';
 
 export default function CreateJob() {
@@ -24,11 +24,16 @@ export default function CreateJob() {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.post('http://localhost:5000/api/jobs', {
-        ...formData,
-        skills: formData.skills.split(',').map(s => s.trim()).filter(s => s !== '')
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
+      const response = await fetch('/api/jobs', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          ...formData,
+          skills: formData.skills.split(',').map(s => s.trim()).filter(s => s !== '')
+        })
       });
 
       router.push('/');

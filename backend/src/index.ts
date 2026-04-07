@@ -13,16 +13,25 @@ import { screeningRoutes } from './routes/screening';
 import { fileRoutes } from './routes/files';
 import { applicationRoutes } from './routes/applications';
 import { adminRoutes } from './routes/admin';
+import { generalLimiter, authLimiter, uploadLimiter, aiLimiter } from './middleware/rateLimit';
+import { securityHeaders } from './middleware/security';
+import { config } from './config';
 
 const app = express();
-const PORT = process.env.PORT || 5000;
 
 app.use(cors({
-  origin: ['http://localhost:3000', 'http://127.0.0.1:3000'],
-  credentials: true
+  origin: config.corsOrigins,
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'HEAD', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  exposedHeaders: ['X-Total-Count'],
+  maxAge: 86400 // 24 hours
 }));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+
+app.use(securityHeaders);
+
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Serve uploaded files
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
@@ -31,49 +40,72 @@ app.get('/health', (req: Request, res: Response) => {
   res.status(200).json({ message: 'Server is running' });
 });
 
-app.use('/api/auth', authRoutes);
-app.use('/api/jobs', jobRoutes);
-app.use('/api/talents', talentRoutes);
-app.use('/api/screening', screeningRoutes);
-app.use('/api/files', fileRoutes);
-app.use('/api/applications', applicationRoutes);
-app.use('/api/admin', adminRoutes);
+app.use('/api/auth', authLimiter, authRoutes);
+app.use('/api/jobs', generalLimiter, jobRoutes);
+app.use('/api/talents', generalLimiter, talentRoutes);
+app.use('/api/screening', aiLimiter, screeningRoutes);
+app.use('/api/files', uploadLimiter, fileRoutes);
+app.use('/api/applications', generalLimiter, applicationRoutes);
+app.use('/api/admin', generalLimiter, adminRoutes);
 
-// 404 handler
-app.use((req: Request, res: Response) => {
-  res.status(404).json({ message: 'Route not found' });
+// Global error handler
+app.use((error: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error('Unhandled error:', {
+    message: error.message,
+    stack: error.stack,
+    url: req.url,
+    method: req.method,
+    ip: req.ip,
+    userAgent: req.get('User-Agent')
+  });
+
+  // Don't leak error details in production
+  const isDevelopment = process.env.NODE_ENV !== 'production';
+  const errorResponse = {
+    message: isDevelopment ? error.message : 'Internal server error',
+    ...(isDevelopment && { stack: error.stack })
+  };
+
+  res.status(error.status || 500).json(errorResponse);
 });
 
-mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/umurava-ai-hackathon', {
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  console.log('SIGTERM received, shutting down gracefully');
+  await mongoose.connection.close();
+  console.log('MongoDB connection closed');
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  console.log('SIGINT received, shutting down gracefully');
+  await mongoose.connection.close();
+  console.log('MongoDB connection closed');
+  process.exit(0);
+});
+
+mongoose.connect(config.mongoUri, {
     serverSelectionTimeoutMS: 3000,
     connectTimeoutMS: 3000,
   })
   .then(() => {
-    console.log('Connected to MongoDB');
-    app.listen(PORT, () => {
-      console.log(`Server is running on port ${PORT}`);
-      console.log(`API endpoints available at:`);
-      console.log(`  - Health: http://localhost:${PORT}/health`);
-      console.log(`  - Auth: http://localhost:${PORT}/api/auth`);
-      console.log(`  - Jobs: http://localhost:${PORT}/api/jobs`);
-      console.log(`  - Talents: http://localhost:${PORT}/api/talents`);
-      console.log(`  - Screening: http://localhost:${PORT}/api/screening`);
-      console.log(`  - Files: http://localhost:${PORT}/api/files`);
-      console.log(`  - Applications: http://localhost:${PORT}/api/applications`);
+    console.log('✅ Connected to MongoDB');
+    app.listen(config.port, () => {
+      console.log(`🚀 Server is running on port ${config.port}`);
+      console.log(`📊 API endpoints available at:`);
+      console.log(`  - Health: http://localhost:${config.port}/health`);
+      console.log(`  - Auth: http://localhost:${config.port}/api/auth`);
+      console.log(`  - Jobs: http://localhost:${config.port}/api/jobs`);
+      console.log(`  - Talents: http://localhost:${config.port}/api/talents`);
+      console.log(`  - Screening: http://localhost:${config.port}/api/screening`);
+      console.log(`  - Files: http://localhost:${config.port}/api/files`);
+      console.log(`  - Applications: http://localhost:${config.port}/api/applications`);
+      console.log(`  - Admin: http://localhost:${config.port}/api/admin`);
+      console.log(`🔒 Security: Rate limiting and security headers enabled`);
+      console.log(`📁 Uploads served from: /uploads`);
     });
   })
   .catch((error) => {
-    console.warn('MongoDB connection failed, running in demo mode:', error.message);
-    app.listen(PORT, () => {
-      console.log(`Server is running on port ${PORT} (Demo Mode - No Database)`);
-      console.log(`API endpoints available at:`);
-      console.log(`  - Health: http://localhost:${PORT}/health`);
-      console.log(`  - Auth: http://localhost:${PORT}/api/auth`);
-      console.log(`  - Jobs: http://localhost:${PORT}/api/jobs`);
-      console.log(`  - Talents: http://localhost:${PORT}/api/talents`);
-      console.log(`  - Screening: http://localhost:${PORT}/api/screening`);
-      console.log(`  - Files: http://localhost:${PORT}/api/files`);
-      console.log(`  - Applications: http://localhost:${PORT}/api/applications`);
-      console.log(`Note: Database operations will fail - this is demo mode only`);
-    });
+    console.error('❌ Failed to connect to MongoDB:', error);
+    process.exit(1);
   });

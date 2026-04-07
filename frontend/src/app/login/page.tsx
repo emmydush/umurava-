@@ -1,7 +1,6 @@
 'use client';
 
-import { useState } from 'react';
-import axios from 'axios';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Zap, ArrowRight, Mail, Lock, Loader2 } from 'lucide-react';
 
@@ -10,30 +9,112 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [rateLimited, setRateLimited] = useState(false);
+  const [retryAfter, setRetryAfter] = useState(0);
   const router = useRouter();
+
+  useEffect(() => {
+    if (retryAfter > 0) {
+      const timer = setTimeout(() => {
+        setRetryAfter(retryAfter - 1);
+      }, 1000);
+      return () => clearTimeout(timer);
+    } else {
+      setRateLimited(false);
+    }
+  }, [retryAfter]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
 
+    // Add validation before sending
+    if (!email || !password) {
+      setError('Email and password are required');
+      setLoading(false);
+      return;
+    }
+
+    // Log the data being sent for debugging
+    console.log('Login data:', { email, password: '***' });
+
     try {
-      const response = await axios.post('http://localhost:5000/api/auth/login', {
-        email,
-        password
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+          email,
+          password
+        })
       });
 
-      localStorage.setItem('token', response.data.token);
-      localStorage.setItem('user', JSON.stringify(response.data.user));
+      console.log('Login response status:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.log('Login error response:', errorText);
+        
+        let errorMessage = 'Login failed';
+        
+        if (response.status === 400) {
+          errorMessage = 'Invalid email or password format';
+        } else if (response.status === 401) {
+          errorMessage = 'Invalid email or password';
+        } else if (response.status === 404) {
+          errorMessage = 'User not found';
+        } else if (response.status === 429) {
+          errorMessage = 'Too many authentication attempts. Please wait a few minutes before trying again.';
+        } else if (response.status === 500) {
+          errorMessage = 'Server error. Please try again later';
+        } else {
+          try {
+            const errorData = JSON.parse(errorText);
+            // Check for rate limiting in the error message
+            if (errorData.message?.includes('too many attempts') || 
+                errorData.message?.includes('rate limit') ||
+                errorData.error?.includes('too many attempts') ||
+                errorData.error?.includes('rate limit')) {
+              errorMessage = 'Too many authentication attempts. Please wait a few minutes before trying again.';
+            } else {
+              errorMessage = errorData.message || errorData.error || 'Login failed';
+            }
+          } catch {
+            errorMessage = `Login failed: ${response.status}`;
+          }
+        }
+        throw new Error(errorMessage);
+      }
+
+      const data = await response.json();
+      console.log('Login response data:', data);
+
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
       
-      // Redirect candidates to profile page
-      if (response.data.user.role === 'talent') {
-        router.push('/talents/my-profile');
+      // Redirect to dashboard instead of applications page
+      if (data.user.role === 'talent') {
+        router.push('/dashboard');
+      } else if (data.user.role === 'recruiter') {
+        router.push('/dashboard');
       } else {
-        router.push('/');
+        router.push('/dashboard');
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Login failed. Please check your credentials.');
+      console.error('Login error:', err);
+      
+      // Check if it's a rate limiting error
+      if (err.message?.includes('Too many authentication attempts') || 
+          err.message?.includes('rate limit')) {
+        setRateLimited(true);
+        setRetryAfter(300); // 5 minutes in seconds
+        setError('Too many authentication attempts. Please wait 5 minutes before trying again.');
+      } else {
+        setError(err.message || 'Login failed. Please check your connection and try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -110,11 +191,15 @@ export default function Login() {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || rateLimited}
               className="w-full flex items-center justify-center space-x-2 py-3 px-4 bg-primary-600 text-white rounded-xl font-black shadow-lg shadow-primary-500/20 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-all active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed group"
             >
               {loading ? (
                 <Loader2 className="w-5 h-5 animate-spin" />
+              ) : rateLimited ? (
+                <>
+                  <span>Try again in {Math.floor(retryAfter / 60)}:{(retryAfter % 60).toString().padStart(2, '0')}</span>
+                </>
               ) : (
                 <>
                   <span>Sign In</span>

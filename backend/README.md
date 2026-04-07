@@ -88,11 +88,33 @@ This is the backend API for the Umurava AI Talent Profile Screening Tool, built 
 - **MongoDB** - Database (with Mongoose ODM)
 - **JWT** - Authentication tokens
 - **Google Gemini API** - AI-powered candidate analysis
-- **Multer** - File upload handling (prepared for resume uploads)
+- **Multer** - File upload handling
+- **pdf-parse** - PDF document parsing
+- **mammoth** - DOCX document parsing
+- **csv-parser** - CSV file processing
+- **helmet** - Security headers
+- **express-rate-limit** - Rate limiting
 
 ## Environment Variables
 
 Create a `.env` file in the root directory:
+
+```env
+# Required
+NODE_ENV=production
+MONGO_URI=mongodb+srv://username:password@cluster.mongodb.net/umurava-prod
+JWT_SECRET=your-super-secure-jwt-secret-key-here
+GEMINI_API_KEY=your-gemini-api-key-here
+
+# Optional
+PORT=5000
+CORS_ORIGINS=https://your-frontend-domain.com
+UPLOAD_PATH=./uploads
+MAX_FILE_SIZE=10485760
+RATE_LIMIT_WINDOW_MS=900000
+RATE_LIMIT_MAX=100
+LOG_LEVEL=info
+```
 
 ```env
 MONGO_URI=mongodb://localhost:27017/umurava-ai-hackathon
@@ -104,50 +126,75 @@ PORT=5000
 ## Installation & Setup
 
 ### Prerequisites
-- **Node.js** (v16 or higher)
-- **MongoDB** (running on localhost:27017)
-- **Git** (for cloning)
+- **Node.js** (v18 or higher)
+- **MongoDB** (local or cloud instance)
+- **Docker** (optional, for containerized deployment)
 
-### 1. Install Dependencies
-```bash
-npm install
-```
+### Local Development
 
-### 2. Set Up Environment Variables
-Create a `.env` file in the root directory:
-```env
-MONGO_URI=mongodb://localhost:27017
-GEMINI_API_KEY=your_gemini_api_key_here
-JWT_SECRET=your_jwt_secret_here_change_this_in_production
-PORT=5000
-```
+1. **Install dependencies:**
+   ```bash
+   npm install
+   ```
 
-### 3. Initialize Database
-```bash
-# Navigate to scripts directory
-cd scripts
+2. **Set up environment variables:**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your configuration
+   ```
 
-# Run database initialization
-node init-database.js
+3. **Start development server:**
+   ```bash
+   npm run dev
+   ```
 
-# Verify collections (optional)
-node verify-collections.js
-```
+### Production Deployment
 
-This will create all necessary collections with sample data and demo accounts.
+#### Using Docker Compose (Recommended)
 
-### 4. Start the Server
-```bash
-# Development mode
-npm run dev
+1. **Set environment variables:**
+   ```bash
+   export MONGO_URI="your-mongodb-connection-string"
+   export JWT_SECRET="your-secure-jwt-secret"
+   export GEMINI_API_KEY="your-gemini-api-key"
+   export CORS_ORIGINS="https://your-frontend-domain.com"
+   ```
 
-# Production mode
-npm run start
-```
+2. **Deploy:**
+   ```bash
+   docker-compose up -d
+   ```
 
-### 5. Verify Installation
-- **Backend**: http://localhost:5000/health
-- **Frontend**: http://localhost:3000 (if frontend is set up)
+#### Manual Production Deployment
+
+1. **Install dependencies:**
+   ```bash
+   npm ci --only=production
+   ```
+
+2. **Build the application:**
+   ```bash
+   npm run build
+   ```
+
+3. **Start the server:**
+   ```bash
+   npm start
+   ```
+
+### Health Check
+
+- **Endpoint**: `GET /health`
+- **Docker Health Check**: Built into container configuration
+
+## Security Features
+
+- ✅ **Rate Limiting**: Different limits for auth, uploads, and AI calls
+- ✅ **Security Headers**: HSTS, XSS protection, CSP
+- ✅ **Input Validation**: File type and size validation
+- ✅ **Error Sanitization**: No sensitive data in production responses
+- ✅ **CORS Configuration**: Configurable allowed origins
+- ✅ **Environment Validation**: Required variables checking on startup
 
 ## Demo Accounts
 

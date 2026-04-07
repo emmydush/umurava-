@@ -163,7 +163,7 @@ export const getMyTalentProfile = async (req: Request & { user?: any }, res: Res
     const profile = await TalentProfile.findOne({ userId: req.user._id });
 
     if (!profile) {
-      return res.status(404).json({ message: 'Talent profile not found' });
+      return res.json({ profile: null });
     }
 
     res.json({

@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { User } from '../models';
+import { config } from '../config';
 
 interface AuthRequest extends Request {
   user?: any;
@@ -15,7 +16,7 @@ export const authenticateToken = async (req: AuthRequest, res: Response, next: N
       return res.status(401).json({ message: 'Access token required' });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string };
+    const decoded = jwt.verify(token, config.jwtSecret) as { userId: string };
     const user = await User.findById(decoded.userId).select('-password');
     
     if (!user) {
@@ -39,7 +40,7 @@ export const optionalAuthenticateToken = async (req: AuthRequest, res: Response,
       return next();
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string };
+    const decoded = jwt.verify(token, config.jwtSecret) as { userId: string };
     const user = await User.findById(decoded.userId).select('-password');
     
     if (user) {

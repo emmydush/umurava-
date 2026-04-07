@@ -29,20 +29,72 @@ export default function Register() {
     setLoading(true);
     setError('');
 
+    // Add validation before sending
+    if (!formData.email || !formData.password || !formData.firstName || !formData.lastName) {
+      setError('All fields are required');
+      setLoading(false);
+      return;
+    }
+
+    if (formData.password.length < 6) {
+      setError('Password must be at least 6 characters long');
+      setLoading(false);
+      return;
+    }
+
+    // Log the data being sent for debugging
+    console.log('Registration data:', formData);
+
     try {
-      const response = await axios.post('http://localhost:5000/api/auth/register', formData);
+      // Try using fetch API instead of axios
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify(formData),
+      });
+
+      console.log('Registration response status:', response.status);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.log('Error response data:', errorData);
+        
+        const errorMessage = errorData.message || errorData.error || `Registration failed with status ${response.status}`;
+        throw new Error(errorMessage);
+      }
+
+      const data = await response.json();
+      console.log('Registration response data:', data);
       
-      localStorage.setItem('token', response.data.token);
-      localStorage.setItem('user', JSON.stringify(response.data.user));
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
       
-      // Redirect candidates to profile page to complete setup
-      if (response.data.user.role === 'talent') {
-        router.push('/talents/my-profile');
+      // Redirect to dashboard instead of applications page
+      if (data.user.role === 'talent') {
+        router.push('/dashboard');
+      } else if (data.user.role === 'recruiter') {
+        router.push('/dashboard');
       } else {
-        router.push('/');
+        router.push('/dashboard');
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Registration failed. Please check your connection.');
+      console.error('Registration error:', err);
+      
+      // Enhanced error handling
+      if (err.name === 'AbortError') {
+        setError('Request timeout. Please check your connection and try again.');
+      } else if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
+        setError('Network error. Please check your connection and ensure the server is running.');
+      } else if (err.message.includes('409') || err.message.includes('already exists')) {
+        setError('An account with this email already exists.');
+      } else if (err.message.includes('500')) {
+        setError('Server error. Please try again later.');
+      } else {
+        setError(err.message || 'Registration failed. Please check your connection and try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -77,7 +129,7 @@ export default function Register() {
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <label htmlFor="firstName" className="block text-xs font-black text-slate-500 uppercase tracking-wider ml-1">
                   First Name
@@ -209,4 +261,3 @@ export default function Register() {
     </div>
   );
 }
-
