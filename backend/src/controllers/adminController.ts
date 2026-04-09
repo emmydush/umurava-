@@ -232,3 +232,69 @@ export const deleteUser = async (req: AuthenticatedRequest, res: Response) => {
     res.status(500).json({ message: 'Failed to delete user' });
   }
 };
+
+export const getAllJobsAdmin = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+
+    const jobs = await JobPosting.find({})
+      .populate('recruiterId', 'firstName lastName email')
+      .sort({ createdAt: -1 });
+
+    res.json({ jobs });
+  } catch (error) {
+    console.error('Error fetching jobs for admin:', error);
+    res.status(500).json({ message: 'Failed to fetch jobs' });
+  }
+};
+
+export const toggleJobStatusAdmin = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+
+    const { jobId } = req.params;
+    const { isActive } = req.body;
+
+    const job = await JobPosting.findByIdAndUpdate(
+      jobId,
+      { isActive },
+      { new: true }
+    );
+
+    if (!job) {
+      return res.status(404).json({ message: 'Job not found' });
+    }
+
+    res.json({ message: `Job ${isActive ? 'activated' : 'deactivated'} successfully`, job });
+  } catch (error) {
+    console.error('Error toggling job status:', error);
+    res.status(500).json({ message: 'Failed to toggle job status' });
+  }
+};
+
+export const deleteJobAdmin = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+
+    const { jobId } = req.params;
+
+    const job = await JobPosting.findByIdAndDelete(jobId);
+    if (!job) {
+      return res.status(404).json({ message: 'Job not found' });
+    }
+
+    // Also delete related applications
+    await Application.deleteMany({ jobId });
+
+    res.json({ message: 'Job and related applications deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting job:', error);
+    res.status(500).json({ message: 'Failed to delete job' });
+  }
+};

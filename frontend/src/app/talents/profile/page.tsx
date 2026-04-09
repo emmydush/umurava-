@@ -154,6 +154,17 @@ export default function EditProfile() {
         throw new Error(errorData.message || 'Failed to update profile');
       }
 
+      // Update localStorage with the new user data so navigation reflects changes
+      const updatedProfile = await response.json();
+      const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+      const updatedUser = {
+        ...currentUser,
+        firstName: updatedProfile.firstName,
+        lastName: updatedProfile.lastName,
+        email: updatedProfile.email
+      };
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+
       router.push('/talents/my-profile');
     } catch (err: any) {
       setError(err.message || 'An error occurred while saving.');

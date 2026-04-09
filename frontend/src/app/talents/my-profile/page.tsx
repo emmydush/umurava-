@@ -15,7 +15,8 @@ import {
   Globe,
   Link2,
   ExternalLink,
-  FileText
+  FileText,
+  Lock
 } from 'lucide-react';
 
 interface TalentProfile {
@@ -289,6 +290,27 @@ export default function MyProfile() {
                   </div>
                 </div>
               )}
+
+              {/* Password Change */}
+              <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
+                <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest mb-5 flex items-center">
+                  <Lock className="w-4 h-4 mr-2 text-primary-600" />Security Settings
+                </h3>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-bold text-slate-900 text-sm">Password</p>
+                      <p className="text-xs text-slate-500">Change your account password</p>
+                    </div>
+                    <button
+                      onClick={() => router.push('/talents/change-password')}
+                      className="px-4 py-2 bg-primary-600 text-white rounded-xl text-sm font-bold hover:bg-primary-700 transition-all"
+                    >
+                      Change Password
+                    </button>
+                  </div>
+                </div>
+              </div>
 
               {/* Resume */}
               {profile.resumeUrl && (

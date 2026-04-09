@@ -16,7 +16,7 @@ const router = express.Router();
 // Basic CRUD operations
 router.post('/', authenticateToken, requireRole(['talent', 'admin']), createTalentProfile);
 router.get('/', getTalentProfiles);
-router.get('/my-profile', authenticateToken, requireRole(['talent', 'admin']), getMyTalentProfile);
+router.get('/my-profile', authenticateToken, getMyTalentProfile);
 router.put('/profile', authenticateToken, requireRole(['talent', 'admin']), updateMyTalentProfile);
 router.get('/:id', getTalentProfileById);
 router.put('/:id', authenticateToken, requireRole(['talent', 'admin']), updateTalentProfile);

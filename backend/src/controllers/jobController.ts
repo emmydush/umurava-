@@ -97,6 +97,38 @@ export const getJobs = async (req: Request & { user?: any }, res: Response) => {
   }
 };
 
+export const getMyJobs = async (req: Request & { user?: any }, res: Response) => {
+  try {
+    const { page = 1, limit = 100, isActive, workType } = req.query;
+
+    const filter: any = { recruiterId: req.user._id };
+
+    if (isActive !== undefined) filter.isActive = isActive === 'true';
+    if (workType) filter.workType = workType;
+
+    const jobs = await JobPosting.find(filter)
+      .sort({ createdAt: -1 })
+      .limit(Number(limit))
+      .skip((Number(page) - 1) * Number(limit));
+
+    const total = await JobPosting.countDocuments(filter);
+
+    res.json({
+      message: 'My jobs retrieved successfully',
+      jobs,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        pages: Math.ceil(total / Number(limit))
+      }
+    });
+  } catch (error) {
+    console.error('Error getting recruiter jobs:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
 export const getJobById = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;

@@ -1,4 +1,4 @@
-import { JobPosting, TalentProfile, ScreeningResult, ScreeningSession, IScreeningResultDocument } from '../models';
+import { JobPosting, TalentProfile, ScreeningResult, ScreeningSession, IScreeningResultDocument, Application } from '../models';
 import { GeminiService } from './geminiService';
 import { IScreeningSession, IScreeningResult } from '../types';
 
@@ -12,9 +12,16 @@ export class ScreeningService {
         throw new Error('Job posting not found');
       }
 
-      const candidates = await TalentProfile.find({
-        workType: { $in: [job.workType, 'both'] }
-      });
+      const applications = await Application.find({ jobId }).populate('candidateId');
+      
+      if (applications.length === 0) {
+        throw new Error('No candidates have applied for this job yet.');
+      }
+
+      // Extract talent profiles from applications
+      const candidates = applications
+        .map(app => app.candidateId)
+        .filter(candidate => candidate !== null);
 
       const session = new ScreeningSession({
         jobId,
@@ -75,7 +82,7 @@ export class ScreeningService {
             jobId: job._id,
             talentId: candidate._id,
             score: analysis.score,
-            ranking: 0,
+            ranking: i + 1, // Start with a valid ranking to pass validation (will be updated after sorting)
             reasoning: analysis.reasoning,
             shortlisted: false,
             talentProfileUpdatedAt: candidate.updatedAt
@@ -177,6 +184,8 @@ export class ScreeningService {
 
   async getShortlistedCandidates(jobId: string, limit: number = 20): Promise<IScreeningResultDocument[]> {
     try {
+      console.log(`Fetching shortlisted candidates for jobId: ${jobId}, limit: ${limit}`);
+      
       const results = await ScreeningResult.find({ 
         jobId, 
         shortlisted: true 
@@ -185,9 +194,28 @@ export class ScreeningService {
       .sort({ ranking: 1 })
       .limit(limit);
 
+      console.log(`Found ${results.length} shortlisted candidates for jobId: ${jobId}`);
+      
+      // Log each result to debug population issues
+      results.forEach((result, index) => {
+        console.log(`Result ${index + 1}:`, {
+          _id: result._id,
+          score: result.score,
+          ranking: result.ranking,
+          talentId: result.talentId,
+          hasTalentData: !!(result.talentId as any)?.firstName
+        });
+      });
+
       return results;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error getting shortlisted candidates:', error);
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+        jobId,
+        limit
+      });
       throw error;
     }
   }
@@ -211,16 +239,18 @@ export class ScreeningService {
     const headers = ['Ranking', 'Name', 'Email', 'Match Score', 'Key Skills', 'Experience Level', 'AI Rationale'];
     const rows = candidates.map(c => {
       const profile = (c.talentId as any);
+      if (!profile) return null;
+      
       return [
         c.ranking.toString(),
-        `${profile.firstName} ${profile.lastName}`,
-        profile.email,
+        `${profile.firstName || ''} ${profile.lastName || ''}`,
+        profile.email || 'N/A',
         `${c.score}%`,
-        profile.skills.slice(0, 5).join('; '),
-        profile.title,
-        c.reasoning.overall.replace(/"/g, '""')
+        Array.isArray(profile.skills) ? profile.skills.slice(0, 5).join('; ') : '',
+        profile.title || 'N/A',
+        (c.reasoning?.overall || '').replace(/"/g, '""')
       ].map(field => `"${field}"`).join(',');
-    });
+    }).filter(row => row !== null);
 
     return [headers.join(','), ...rows].join('\n');
   }

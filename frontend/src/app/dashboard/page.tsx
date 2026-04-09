@@ -21,6 +21,9 @@ import {
   ChevronDown
 } from 'lucide-react';
 import TalentSidebar from '@/components/TalentSidebar';
+import RecruiterSidebar from '@/components/RecruiterSidebar';
+import RecruiterDashboard from '@/components/RecruiterDashboard';
+import AdminDashboard from '@/components/AdminDashboard';
 import { useRouter } from 'next/navigation';
 
 interface Job {
@@ -67,9 +70,22 @@ export default function DashboardPage() {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [userName, setUserName] = useState('User');
+  const [userRole, setUserRole] = useState('talent');
   const router = useRouter();
 
   useEffect(() => {
+    const token = localStorage.getItem('token');
+    const userStr = localStorage.getItem('user');
+    
+    if (!token || !userStr) {
+      router.push('/login');
+      return;
+    }
+
+    const user = JSON.parse(userStr);
+    setUserName(`${user.firstName} ${user.lastName}`);
+    setUserRole(user.role || 'talent');
     fetchDashboardData();
     fetchNotifications();
   }, []);
@@ -89,8 +105,11 @@ export default function DashboardPage() {
   const fetchDashboardData = async () => {
     try {
       const token = localStorage.getItem('token');
+      const userStr = localStorage.getItem('user');
+      const user = userStr ? JSON.parse(userStr) : null;
+
       if (!token) {
-        setLoading(false);
+        router.push('/login');
         return;
       }
 
@@ -98,28 +117,30 @@ export default function DashboardPage() {
         setTimeout(() => reject(new Error('Request timeout')), 8000)
       );
 
+      const profilePromise = user?.role === 'talent' ? Promise.race([
+        fetch('/api/talents/my-profile', {
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}` 
+          }
+        }).then(res => {
+          if (res.status === 401 || res.status === 403) {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            window.location.href = '/login';
+            throw new Error('Session expired. Please login again.');
+          }
+          if (res.status === 404) {
+            return { profile: null };
+          }
+          if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+          return res.json();
+        }),
+        timeoutPromise
+      ]) as Promise<any> : Promise.resolve({ profile: null });
+
       const [profileResponse, jobsResponse] = await Promise.allSettled([
-        Promise.race([
-          fetch('/api/talents/my-profile', {
-            headers: { 
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}` 
-            }
-          }).then(res => {
-            if (res.status === 401 || res.status === 403) {
-              localStorage.removeItem('token');
-              localStorage.removeItem('user');
-              window.location.href = '/login';
-              throw new Error('Session expired. Please login again.');
-            }
-            if (res.status === 404) {
-              return { profile: null };
-            }
-            if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-            return res.json();
-          }),
-          timeoutPromise
-        ]) as Promise<any>,
+        profilePromise,
         Promise.race([
           fetch('/api/jobs', {
             headers: { 
@@ -273,10 +294,7 @@ export default function DashboardPage() {
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
-  // Get user name from localStorage
-  const userStr = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
-  const user = userStr ? JSON.parse(userStr) : null;
-  const userName = user ? `${user.firstName} ${user.lastName}` : 'Talent User';
+  // userName and userRole are set in useEffect above
 
   // Filter and sort jobs
   const filteredJobs = jobs.filter(job => {
@@ -318,6 +336,17 @@ export default function DashboardPage() {
       </div>
     );
   }
+
+  // Render appropriate dashboard based on user role
+  if (userRole === 'recruiter') {
+    return <RecruiterDashboard userName={userName} />;
+  }
+  
+  if (userRole === 'admin') {
+    return <AdminDashboard userName={userName} />;
+  }
+  
+  // Default to talent dashboard
 
   return (
     <div className="min-h-screen bg-slate-50">

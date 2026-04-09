@@ -76,13 +76,13 @@ export default function CandidateCard({
               <div className="flex items-center mt-1 space-x-2 text-xs font-bold text-slate-500 uppercase tracking-wider">
                 <span>{experienceLevel}</span>
                 <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
-                <span className="truncate max-w-[200px]">{skills.slice(0, 4).join(', ')}{skills.length > 4 ? '...' : ''}</span>
+                <span className="truncate max-w-50">{skills.slice(0, 4).join(', ')}{skills.length > 4 ? '...' : ''}</span>
               </div>
             </div>
           </div>
 
           <div className="flex items-center space-x-12">
-            <div className={`flex flex-col items-center border p-3 rounded-2xl min-w-[80px] ${getScoreColor(matchScore)} shadow-sm`}>
+            <div className={`flex flex-col items-center border p-3 rounded-2xl min-w-20 ${getScoreColor(matchScore)} shadow-sm`}>
               <span className="text-2xl font-black">{matchScore}%</span>
               <span className="text-[10px] font-black uppercase tracking-widest leading-none mt-1">Match Score</span>
             </div>
@@ -124,7 +124,7 @@ export default function CandidateCard({
              <div className="mt-4 p-5 bg-primary-50/30 rounded-2xl border border-primary-100 animate-fade-in">
                <p className="text-sm text-slate-700 leading-relaxed font-medium">
                   <Zap className="w-4 h-4 text-primary-600 inline mr-2 -mt-1" />
-                  {rationale}
+                  {rationale || 'AI analysis is not available for this candidate.'}
                </p>
              </div>
           )}
@@ -144,7 +144,7 @@ function ScoreProgressBar({ label, score, icon, color }: { label: string, score:
         </div>
         <span className="text-[10px] font-black text-slate-800">{score}%</span>
       </div>
-      <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+      <div className="w-full bg-slate-100 rounded-full overflow-hidden max-w-50">
         <div 
           className={`h-full rounded-full transition-all duration-1000 ${color}`}
           style={{ width: `${score}%` }}

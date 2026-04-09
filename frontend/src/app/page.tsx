@@ -75,9 +75,13 @@ export default function ApplicationsPage() {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [userName, setUserName] = useState('Talent User');
   const router = useRouter();
 
   useEffect(() => {
+    const userStr = localStorage.getItem('user');
+    const user = userStr ? JSON.parse(userStr) : null;
+    if (user) setUserName(`${user.firstName} ${user.lastName}`);
     fetchApplicationsData();
     fetchNotifications();
   }, []);
@@ -247,10 +251,7 @@ export default function ApplicationsPage() {
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
-  // Get user name from localStorage
-  const userStr = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
-  const user = userStr ? JSON.parse(userStr) : null;
-  const userName = user ? `${user.firstName} ${user.lastName}` : 'Talent User';
+  // userName is set in useEffect above
 
   // Application stats
   const stats = [

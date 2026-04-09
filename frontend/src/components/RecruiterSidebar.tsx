@@ -15,35 +15,67 @@ import {
   Plus
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import ConfirmDialog from './ConfirmDialog';
 
 export default function RecruiterSidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userName, setUserName] = useState('');
+  const [showLogoutDialog, setShowLogoutDialog] = useState(false);
 
   useEffect(() => {
-    const userStr = localStorage.getItem('user');
-    if (userStr) {
-      try {
-        const user = JSON.parse(userStr);
-        setUserName(`${user.firstName} ${user.lastName}`);
-      } catch (e) {
-        setUserName('Recruiter');
+    setMounted(true);
+    
+    const updateUserName = () => {
+      const userStr = localStorage.getItem('user');
+      if (userStr) {
+        try {
+          const user = JSON.parse(userStr);
+          setUserName(`${user.firstName} ${user.lastName}`);
+        } catch (e) {
+          setUserName('Recruiter');
+        }
       }
-    }
+    };
+
+    updateUserName();
+
+    // Listen for storage changes to update name when profile is updated
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'user') {
+        updateUserName();
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+
+    // Also check for changes every 2 seconds as a fallback
+    const interval = setInterval(updateUserName, 2000);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      clearInterval(interval);
+    };
   }, []);
 
+  if (!mounted) return null;
+
   const logout = () => {
+    setShowLogoutDialog(true);
+  };
+
+  const confirmLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     window.location.href = '/login';
   };
 
   const menuItems = [
-    { icon: <BarChart3 />, label: "Dashboard", href: "/" },
+    { icon: <BarChart3 />, label: "Dashboard", href: "/dashboard" },
     { icon: <Briefcase />, label: "Job Postings", href: "/jobs" },
-    { icon: <Users />, label: "Candidates", href: "/jobs/demo/candidates" },
+    { icon: <Users />, label: "Candidates", href: "/candidates" },
     { icon: <Target />, label: "Screenings", href: "/screening" },
     { icon: <FileText />, label: "Reports", href: "/reports" },
   ];
@@ -68,11 +100,11 @@ export default function RecruiterSidebar() {
 
       {/* Mobile Drawer Overlay */}
       {mobileMenuOpen && (
-        <div className="lg:hidden fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[60] animate-fade-in" onClick={() => setMobileMenuOpen(false)} />
+        <div className="lg:hidden fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-60 animate-fade-in" onClick={() => setMobileMenuOpen(false)} />
       )}
 
       {/* Sidebar Core */}
-      <aside className={`fixed top-0 bottom-0 left-0 w-72 lg:w-64 bg-white border-r border-slate-200 flex flex-col z-[70] transition-transform duration-300 ease-spring ${
+      <aside className={`fixed top-0 bottom-0 left-0 w-72 lg:w-64 bg-white border-r border-slate-200 flex flex-col z-70 transition-transform duration-300 ease-spring ${
         mobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
       }`}>
         <div className="p-6">
@@ -142,6 +174,17 @@ export default function RecruiterSidebar() {
           </button>
         </div>
       </aside>
+
+      {/* Logout Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showLogoutDialog}
+        onClose={() => setShowLogoutDialog(false)}
+        onConfirm={confirmLogout}
+        title="Logout Confirmation"
+        message="Are you sure you want to logout? You will need to sign in again to access your account."
+        confirmText="Logout"
+        cancelText="Cancel"
+      />
     </>
   );
 }

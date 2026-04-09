@@ -31,6 +31,9 @@ export default function CandidateRankedView() {
   const { candidates, filters, loading, error } = useSelector((state: RootState) => state.candidate);
   const [showFilters, setShowFilters] = useState(false);
 
+  // Ensure id is a string
+  const jobId = Array.isArray(id) ? id[0] : id;
+
   // Mock data for demonstration - in production, this would be an API call
   useEffect(() => {
     const fetchCandidates = async () => {
@@ -41,7 +44,11 @@ export default function CandidateRankedView() {
           throw new Error('Authentication token not found');
         }
 
-        const response = await axios.get(`http://localhost:5000/api/screening/shortlisted/${id}?limit=20`, {
+        if (!jobId) {
+          throw new Error('Job ID is missing');
+        }
+
+        const response = await axios.get(`/api/screening/shortlisted/${jobId}?limit=20`, {
           headers: { Authorization: `Bearer ${token}` }
         });
 
@@ -78,10 +85,10 @@ export default function CandidateRankedView() {
       }
     };
 
-    if (id) {
+    if (jobId) {
       fetchCandidates();
     }
-  }, [dispatch, id]);
+  }, [dispatch, jobId]);
 
   const filteredCandidates = candidates.filter(c => {
     const matchesScore = c.matchScore >= filters.scoreThreshold;
@@ -105,7 +112,7 @@ export default function CandidateRankedView() {
     try {
       const token = localStorage.getItem('token');
       const response = await axios({
-        url: `http://localhost:5000/api/screening/export/${id}`,
+        url: `/api/screening/export/${jobId}`,
         method: 'GET',
         responseType: 'blob',
         headers: { Authorization: `Bearer ${token}` }
@@ -114,7 +121,7 @@ export default function CandidateRankedView() {
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `shortlist_${id}.csv`);
+      link.setAttribute('download', `shortlist_${jobId}.csv`);
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -274,8 +281,21 @@ export default function CandidateRankedView() {
           ) : filteredCandidates.length === 0 ? (
             <div className="py-24 text-center glass-card">
                <AlertCircle className="w-12 h-12 text-slate-200 mx-auto mb-4" />
-               <p className="text-xl font-bold text-slate-900">No matches found for current filters.</p>
-               <p className="text-slate-400 mt-2">Try adjusting the match threshold or removing skill filters.</p>
+               <p className="text-xl font-bold text-slate-900">No candidates found</p>
+               <p className="text-slate-400 mt-2">
+                 {candidates.length === 0 
+                   ? "AI screening hasn't been completed for this position yet. Initiate screening to see candidate rankings and AI explanations."
+                   : "Try adjusting the match threshold or removing skill filters."
+                 }
+               </p>
+               {candidates.length === 0 && (
+                 <button 
+                   onClick={() => router.push('/screening')}
+                   className="mt-6 px-6 py-3 bg-primary-600 text-white rounded-2xl text-sm font-bold shadow-xl shadow-primary-500/20 hover:bg-primary-700 transition-all active:scale-95"
+                 >
+                   Start AI Screening
+                 </button>
+               )}
             </div>
           ) : (
             filteredCandidates.map((candidate) => (

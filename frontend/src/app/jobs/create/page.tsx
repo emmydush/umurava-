@@ -24,6 +24,12 @@ export default function CreateJob() {
 
     try {
       const token = localStorage.getItem('token');
+      if (!token) {
+        setError('Please log in to create a job posting.');
+        router.push('/login');
+        return;
+      }
+
       const response = await fetch('/api/jobs', {
         method: 'POST',
         headers: {
@@ -36,9 +42,24 @@ export default function CreateJob() {
         })
       });
 
-      router.push('/');
+      const data = await response.json();
+
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          setError('Session expired. Please log in again.');
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          router.push('/login');
+          return;
+        }
+        setError(data.message || 'Failed to create job posting.');
+        return;
+      }
+
+      // Success - redirect to jobs page
+      router.push('/jobs');
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to create job position.');
+      setError(err.message || 'Failed to create job posting.');
     } finally {
       setLoading(false);
     }

@@ -42,56 +42,91 @@ export default function RecruiterDashboard({ userName }: { userName: string }) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [sessions, setSessions] = useState<ScreeningSession[]>([]);
   const [loading, setLoading] = useState(true);
+  const [authErrorCount, setAuthErrorCount] = useState(0);
 
   useEffect(() => {
-    fetchDashboardData();
-    const interval = setInterval(fetchDashboardData, 15000); // 15s instead of 10s to be kinder on load
-    return () => clearInterval(interval);
-  }, []);
+    let interval: NodeJS.Timeout;
+    
+    const startPolling = () => {
+      fetchDashboardData();
+      interval = setInterval(fetchDashboardData, 60000); // 60s to prevent rate limiting
+    };
+    
+    if (authErrorCount < 3) {
+      startPolling();
+    }
+    
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [authErrorCount]);
 
   const fetchDashboardData = async () => {
     try {
       const token = localStorage.getItem('token');
-      if (!token) {
+      const userStr = localStorage.getItem('user');
+      
+      console.log('RecruiterDashboard: Fetching data...');
+      console.log('RecruiterDashboard: Token exists:', !!token);
+      console.log('RecruiterDashboard: User exists:', !!userStr);
+      
+      if (!token || !userStr) {
+        console.log('RecruiterDashboard: No auth data, showing empty dashboard');
+        setJobs([]);
+        setSessions([]);
         setLoading(false);
         return;
       }
 
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Request timeout')), 8000)
-      );
-
-      const [jobsResponse, sessionsResponse, applicationsResponse] = await Promise.all([
-        Promise.race([
-          axios.get('http://localhost:5000/api/jobs', { headers: { Authorization: `Bearer ${token}` } }),
-          timeoutPromise
-        ]) as Promise<any>,
-        Promise.race([
-          axios.get('http://localhost:5000/api/screening/sessions', { headers: { Authorization: `Bearer ${token}` } }),
-          timeoutPromise
-        ]) as Promise<any>,
-        Promise.race([
-          axios.get('http://localhost:5000/api/applications', { headers: { Authorization: `Bearer ${token}` } }),
-          timeoutPromise
-        ]) as Promise<any>
-      ]);
-
-      const jobsData = jobsResponse.data.jobs || [];
-      const applications = applicationsResponse.data.applications || [];
+      const user = JSON.parse(userStr);
+      console.log('RecruiterDashboard: User role:', user.role);
       
-      const jobsWithCounts = jobsData.map((job: Job) => {
-        const jobApps = applications.filter((app: any) => app.jobId === job._id);
-        const pending = jobApps.filter((app: any) => app.status === 'pending_score' || app.status === 'pending').length;
-        const scored = jobApps.filter((app: any) => app.status === 'screening' || (app.status === 'under_review' && app.aiScore !== null)).length;
-        const shortlisted = jobApps.filter((app: any) => app.status === 'shortlisted').length;
+      if (user.role !== 'recruiter' && user.role !== 'admin') {
+        console.log('RecruiterDashboard: Invalid role for recruiter dashboard:', user.role);
+        setJobs([]);
+        setSessions([]);
+        setLoading(false);
+        return;
+      }
 
-        return { ...job, applicationsCount: jobApps.length, pendingApplications: pending, scoredApplications: scored, shortlistedApplications: shortlisted };
-      });
-
-      setJobs(jobsWithCounts);
-      setSessions(sessionsResponse.data.sessions || []);
+      // Simple API call with basic error handling
+      try {
+        console.log('RecruiterDashboard: Fetching jobs...');
+        const jobsResponse = await axios.get('http://localhost:5000/api/jobs', { 
+          headers: { Authorization: `Bearer ${token}` },
+          timeout: 5000
+        });
+        
+        console.log('RecruiterDashboard: Jobs fetched successfully');
+        const jobsData = jobsResponse.data.jobs || [];
+        
+        // Set jobs without application counts for now
+        const jobsWithCounts = jobsData.map((job: Job) => ({
+          ...job,
+          applicationsCount: 0,
+          pendingApplications: 0,
+          scoredApplications: 0,
+          shortlistedApplications: 0
+        }));
+        
+        setJobs(jobsWithCounts);
+        setSessions([]);
+        
+      } catch (error: any) {
+        console.error('RecruiterDashboard: API error:', error);
+        if (error.response?.status === 401 || error.response?.status === 403) {
+          console.log('RecruiterDashboard: Auth error, clearing data but not redirecting');
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+        }
+        setJobs([]);
+        setSessions([]);
+      }
+      
     } catch (err: any) {
-      console.error('Failed to fetch dashboard data:', err);
+      console.error('RecruiterDashboard: General error:', err);
+      setJobs([]);
+      setSessions([]);
     } finally {
       setLoading(false);
     }

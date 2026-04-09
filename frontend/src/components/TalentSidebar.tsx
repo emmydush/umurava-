@@ -12,6 +12,7 @@ import {
   Menu,
   X
 } from 'lucide-react';
+import ConfirmDialog from './ConfirmDialog';
 
 interface TalentSidebarProps {
   /** If not provided, reads from localStorage */
@@ -20,24 +21,54 @@ interface TalentSidebarProps {
 
 export default function TalentSidebar({ userName: propUserName }: TalentSidebarProps) {
   const pathname = usePathname();
+  const [mounted, setMounted] = useState(false);
   const [userName, setUserName] = useState(propUserName || '');
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [showLogoutDialog, setShowLogoutDialog] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     if (!propUserName) {
-      try {
-        const userStr = localStorage.getItem('user');
-        if (userStr) {
-          const user = JSON.parse(userStr);
-          setUserName(user.firstName || user.email || 'Talent');
+      const updateUserName = () => {
+        try {
+          const userStr = localStorage.getItem('user');
+          if (userStr) {
+            const user = JSON.parse(userStr);
+            setUserName(user.firstName || user.email || 'Talent');
+          }
+        } catch {
+          setUserName('Talent');
         }
-      } catch {
-        setUserName('Talent');
-      }
+      };
+
+      updateUserName();
+
+      // Listen for storage changes to update name when profile is updated
+      const handleStorageChange = (e: StorageEvent) => {
+        if (e.key === 'user') {
+          updateUserName();
+        }
+      };
+
+      window.addEventListener('storage', handleStorageChange);
+
+      // Also check for changes every 2 seconds as a fallback
+      const interval = setInterval(updateUserName, 2000);
+
+      return () => {
+        window.removeEventListener('storage', handleStorageChange);
+        clearInterval(interval);
+      };
     }
   }, [propUserName]);
 
+  if (!mounted) return null;
+
   const logout = () => {
+    setShowLogoutDialog(true);
+  };
+
+  const confirmLogout = () => {
     try {
       console.log('Logging out from sidebar...');
       
@@ -160,6 +191,17 @@ export default function TalentSidebar({ userName: propUserName }: TalentSidebarP
           </aside>
         </div>
       )}
+
+      {/* Logout Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showLogoutDialog}
+        onClose={() => setShowLogoutDialog(false)}
+        onConfirm={confirmLogout}
+        title="Logout Confirmation"
+        message="Are you sure you want to logout? You will need to sign in again to access your account."
+        confirmText="Logout"
+        cancelText="Cancel"
+      />
     </>
   );
 }

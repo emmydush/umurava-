@@ -28,7 +28,7 @@ export class GeminiService {
     
     try {
       const result = await genAI.models.generateContent({
-        model: 'gemini-pro-latest', // Updated to use the correct model name
+        model: 'gemini-1.5-flash',
         contents: prompt
       });
       
@@ -211,7 +211,7 @@ Provide a concise summary (2-3 paragraphs) explaining the overall quality of the
 
     try {
       const result = await genAI.models.generateContent({
-        model: 'gemini-pro-latest', // Updated to use the correct model name
+        model: 'gemini-1.5-flash',
         contents: prompt
       });
       
@@ -265,7 +265,7 @@ ${text}
 
     try {
       const result = await genAI.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-1.5-flash',
         contents: prompt
       });
       

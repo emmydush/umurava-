@@ -16,6 +16,8 @@ import {
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import TalentSidebar from '@/components/TalentSidebar';
+import RecruiterSidebar from '@/components/RecruiterSidebar';
+import RecruiterJobsView from '../../components/RecruiterJobsView';
 
 interface Job {
   _id: string;
@@ -53,9 +55,13 @@ export default function JobsPage() {
   const [filterType, setFilterType] = useState<FilterType>('all');
   const [sortBy, setSortBy] = useState<SortOption>('newest');
   const [showFilters, setShowFilters] = useState(false);
+  const [userRole, setUserRole] = useState<string>('talent');
   const router = useRouter();
 
   useEffect(() => {
+    const userStr = localStorage.getItem('user');
+    const user = userStr ? JSON.parse(userStr) : null;
+    setUserRole(user?.role || 'talent');
     fetchJobsAndProfile();
   }, []);
 
@@ -155,6 +161,11 @@ export default function JobsPage() {
     if (min === max) return `${currency} ${min.toLocaleString()}`;
     return `${currency} ${min.toLocaleString()} - ${max.toLocaleString()}`;
   };
+
+  // Render appropriate jobs view based on user role
+  if (userRole === 'recruiter') {
+    return <RecruiterJobsView />;
+  }
 
   return (
     <div className="min-h-screen bg-slate-50">

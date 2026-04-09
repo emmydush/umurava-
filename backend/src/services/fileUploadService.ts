@@ -1,7 +1,6 @@
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs/promises';
-const pdfParse = require('pdf-parse');
 import mammoth from 'mammoth';
 import csv from 'csv-parser';
 import { Readable } from 'stream';
@@ -142,6 +141,8 @@ export class FileUploadService {
       const dataBuffer = await fs.readFile(filePath);
       console.log('📄 PDF buffer size:', dataBuffer.length, 'bytes');
 
+      // Use require with type assertion
+      const pdfParse = require('pdf-parse') as any;
       const data = await pdfParse(dataBuffer);
       console.log('✅ PDF parsed successfully, text length:', data.text?.length || 0);
       console.log('📝 PDF pages:', data.numpages);

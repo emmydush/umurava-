@@ -18,8 +18,11 @@ import {
   Eye,
   Activity,
   Database,
-  Globe
+  Globe,
+  Search,
+  ChevronRight
 } from 'lucide-react';
+import ConfirmDialog from './ConfirmDialog';
 
 interface SystemStats {
   totalUsers: number;
@@ -48,7 +51,23 @@ interface SystemActivity {
   userName?: string;
 }
 
+type ViewType = 'overview' | 'users' | 'jobs' | 'analytics' | 'settings';
+
+interface Job {
+  _id: string;
+  title: string;
+  company: string;
+  isActive: boolean;
+  createdAt: string;
+  recruiterId: {
+    firstName: string;
+    lastName: string;
+    email: string;
+  };
+}
+
 export default function AdminDashboard({ userName }: { userName: string }) {
+  const [activeView, setActiveView] = useState<ViewType>('overview');
   const [stats, setStats] = useState<SystemStats>({
     totalUsers: 0,
     totalJobs: 0,
@@ -57,80 +76,134 @@ export default function AdminDashboard({ userName }: { userName: string }) {
     systemHealth: 'healthy'
   });
   const [users, setUsers] = useState<User[]>([]);
+  const [jobs, setJobs] = useState<Job[]>([]);
   const [activities, setActivities] = useState<SystemActivity[]>([]);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [showLogoutDialog, setShowLogoutDialog] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     fetchAdminData();
-  }, []);
+  }, [activeView]);
 
   const fetchAdminData = async () => {
     try {
+      setLoading(true);
       const token = localStorage.getItem('token');
-      
-      if (!token) {
-        setLoading(false);
-        return;
+      if (!token) return;
+
+      if (activeView === 'overview') {
+        const [statsRes, usersRes, activitiesRes] = await Promise.all([
+          axios.get('/api/admin/stats', { headers: { Authorization: `Bearer ${token}` } }),
+          axios.get('/api/admin/users', { headers: { Authorization: `Bearer ${token}` } }),
+          axios.get('/api/admin/activities', { headers: { Authorization: `Bearer ${token}` } })
+        ]);
+        setStats(statsRes.data.stats);
+        setUsers(usersRes.data.users || []);
+        setActivities(activitiesRes.data.activities || []);
+      } else if (activeView === 'users') {
+        const res = await axios.get('/api/admin/users', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setUsers(res.data.users || []);
+      } else if (activeView === 'jobs') {
+        const res = await axios.get('/api/admin/jobs', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setJobs(res.data.jobs || []);
       }
-
-      // Add timeout to prevent infinite loading
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Request timeout')), 8000)
-      );
-
-      const [statsResponse, usersResponse, activitiesResponse] = await Promise.all([
-        Promise.race([
-          axios.get('http://localhost:5000/api/admin/stats', {
-            headers: { Authorization: `Bearer ${token}` }
-          }),
-          timeoutPromise
-        ]) as Promise<any>,
-        Promise.race([
-          axios.get('http://localhost:5000/api/admin/users', {
-            headers: { Authorization: `Bearer ${token}` }
-          }),
-          timeoutPromise
-        ]) as Promise<any>,
-        Promise.race([
-          axios.get('http://localhost:5000/api/admin/activities', {
-            headers: { Authorization: `Bearer ${token}` }
-          }),
-          timeoutPromise
-        ]) as Promise<any>
-      ]);
-
-      setStats(statsResponse.data.stats);
-      setUsers(usersResponse.data.users || []);
-      setActivities(activitiesResponse.data.activities || []);
     } catch (err: any) {
       console.error('Failed to fetch admin data:', err);
-      if (err.response?.status === 401 || err.response?.status === 403) {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        window.location.reload();
-      }
     } finally {
       setLoading(false);
     }
   };
 
-  const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    window.location.reload();
+  const handleUpdateRole = async (userId: string, newRole: string) => {
+    try {
+      setActionLoading(userId);
+      const token = localStorage.getItem('token');
+      await axios.put(`/api/admin/users/${userId}/role`, 
+        { role: newRole },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setUsers(prev => prev.map(u => u._id === userId ? { ...u, role: newRole } : u));
+    } catch (err) {
+      console.error('Failed to update role:', err);
+    } finally {
+      setActionLoading(null);
+    }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="w-16 h-16 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin"></div>
-      </div>
-    );
-  }
+  const handleDeleteUser = async (userId: string) => {
+    if (!confirm('Are you sure you want to delete this user? All related data will be removed.')) return;
+    try {
+      setActionLoading(userId);
+      const token = localStorage.getItem('token');
+      await axios.delete(`/api/admin/users/${userId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setUsers(prev => prev.filter(u => u._id !== userId));
+    } catch (err) {
+      console.error('Failed to delete user:', err);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleToggleJob = async (jobId: string, currentStatus: boolean) => {
+    try {
+      setActionLoading(jobId);
+      const token = localStorage.getItem('token');
+      await axios.put(`/api/admin/jobs/${jobId}/status`, 
+        { isActive: !currentStatus },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setJobs(prev => prev.map(j => j._id === jobId ? { ...j, isActive: !currentStatus } : j));
+    } catch (err) {
+      console.error('Failed to toggle job status:', err);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleDeleteJob = async (jobId: string) => {
+    if (!confirm('Are you sure you want to delete this job? This action cannot be undone.')) return;
+    try {
+      setActionLoading(jobId);
+      const token = localStorage.getItem('token');
+      await axios.delete(`/api/admin/jobs/${jobId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setJobs(prev => prev.filter(j => j._id !== jobId));
+    } catch (err) {
+      console.error('Failed to delete job:', err);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const logout = () => setShowLogoutDialog(true);
+  const confirmLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    window.location.href = '/login';
+  };
+
+  const filteredUsers = users.filter(u => 
+    `${u.firstName} ${u.lastName}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    u.email.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const filteredJobs = jobs.filter(j => 
+    j.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    j.company.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-50 flex">
       {/* Sidebar Navigation */}
       <aside className="fixed left-0 top-0 bottom-0 w-64 bg-white border-r border-slate-200 hidden lg:flex flex-col z-50">
         <div className="p-6">
@@ -138,33 +211,29 @@ export default function AdminDashboard({ userName }: { userName: string }) {
             <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
               <Zap className="text-white w-5 h-5 fill-current" />
             </div>
-            <span className="text-xl font-bold">Umurava<span className="text-primary-600">AI</span></span>
+            <span className="text-xl font-bold">Umurava<span className="text-primary-600">Admin</span></span>
           </div>
 
           <nav className="space-y-1">
-            <NavItem icon={<BarChart3 />} label="Overview" active onClick={() => {}} />
-            <NavItem icon={<Users />} label="User Management" onClick={() => {}} />
-            <NavItem icon={<Briefcase />} label="Job Management" onClick={() => {}} />
-            <NavItem icon={<Shield />} label="Security" onClick={() => {}} />
-            <NavItem icon={<Database />} label="System Health" onClick={() => {}} />
-            <NavItem icon={<Settings />} label="Settings" onClick={() => {}} />
+            <NavItem icon={<BarChart3 />} label="Overview" active={activeView === 'overview'} onClick={() => setActiveView('overview')} />
+            <NavItem icon={<Users />} label="Users" active={activeView === 'users'} onClick={() => setActiveView('users')} />
+            <NavItem icon={<Briefcase />} label="Jobs" active={activeView === 'jobs'} onClick={() => setActiveView('jobs')} />
+            <NavItem icon={<TrendingUp />} label="Analytics" active={activeView === 'analytics'} onClick={() => setActiveView('analytics')} />
+            <NavItem icon={<Settings />} label="Settings" active={activeView === 'settings'} onClick={() => setActiveView('settings')} />
           </nav>
         </div>
 
         <div className="mt-auto p-6 pb-12 border-t border-slate-100">
           <div className="flex items-center space-x-3 mb-6">
-            <div className="w-10 h-10 rounded-full bg-red-100 text-red-700 flex items-center justify-center font-bold">
+            <div className="w-10 h-10 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-bold">
               {userName.charAt(0)}
             </div>
             <div>
-              <div className="text-sm font-bold text-slate-900 truncate max-w-[120px]">{userName}</div>
-              <div className="text-xs text-slate-500 capitalize">Administrator</div>
+              <div className="text-sm font-bold text-slate-900 truncate max-w-30">{userName}</div>
+              <div className="text-xs text-slate-500">Super Admin</div>
             </div>
           </div>
-          <button 
-            onClick={logout}
-            className="flex items-center space-x-2 text-slate-500 hover:text-red-600 transition-colors text-sm font-medium w-full"
-          >
+          <button onClick={logout} className="flex items-center space-x-2 text-slate-500 hover:text-red-600 transition-colors text-sm font-medium w-full">
             <LogOut className="w-4 h-4" />
             <span>Logout</span>
           </button>
@@ -172,244 +241,257 @@ export default function AdminDashboard({ userName }: { userName: string }) {
       </aside>
 
       {/* Main Content Area */}
-      <main className="lg:ml-64 min-h-screen p-4 md:p-8">
+      <main className="flex-1 lg:ml-64 min-h-screen p-4 md:p-8">
         <header className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
           <div>
-            <h1 className="text-2xl font-black text-slate-900 tracking-tight">Admin Dashboard</h1>
-            <p className="text-slate-500 text-sm mt-1">System overview and administration controls.</p>
-          </div>
-          
-          <div className="flex flex-wrap gap-3">
-            <button className="flex items-center space-x-2 px-4 py-2 bg-primary-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-primary-500/10 hover:bg-primary-700 transition-all active:scale-95">
-              <Users className="w-4 h-4" />
-              <span>Manage Users</span>
-            </button>
-            <button className="flex items-center space-x-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl text-sm font-bold shadow-sm hover:bg-slate-50 transition-all active:scale-95">
-              <Settings className="w-4 h-4" />
-              <span>Settings</span>
-            </button>
+            <h1 className="text-2xl font-black text-slate-900 tracking-tight">
+              {activeView.charAt(0).toUpperCase() + activeView.slice(1)}
+            </h1>
+            <p className="text-slate-500 text-sm mt-1">
+              {activeView === 'overview' && 'System statistics and recent activity.'}
+              {activeView === 'users' && 'Manage user accounts and roles.'}
+              {activeView === 'jobs' && 'Monitor and manage job postings.'}
+            </p>
           </div>
         </header>
 
-        {/* System Health Alert */}
-        {stats.systemHealth !== 'healthy' && (
-          <div className={`mb-6 p-4 rounded-2xl border ${
-            stats.systemHealth === 'critical' 
-              ? 'bg-red-50 border-red-200 text-red-700' 
-              : 'bg-yellow-50 border-yellow-200 text-yellow-700'
-          }`}>
-            <div className="flex items-center space-x-3">
-              <AlertTriangle className="w-5 h-5" />
-              <div>
-                <div className="font-bold">System {stats.systemHealth === 'critical' ? 'Critical' : 'Warning'}</div>
-                <div className="text-sm opacity-90">
-                  {stats.systemHealth === 'critical' 
-                    ? 'Immediate attention required. Multiple systems are experiencing issues.'
-                    : 'Some systems require attention. Performance may be degraded.'
-                  }
+        {loading ? (
+          <div className="flex items-center justify-center h-64">
+            <div className="w-12 h-12 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin"></div>
+          </div>
+        ) : (
+          <div className="animate-in fade-in duration-500">
+            {activeView === 'overview' && (
+              <div className="space-y-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  <StatCard title="Total Users" value={stats.totalUsers.toString()} icon={<Users className="text-blue-600" />} trend="All time" />
+                  <StatCard title="Active Jobs" value={stats.totalJobs.toString()} icon={<Briefcase className="text-purple-600" />} trend="Current" />
+                  <StatCard title="Applications" value={stats.totalApplications.toString()} icon={<BarChart3 className="text-green-600" />} trend="Received" />
+                  <StatCard title="Live Screenings" value={stats.activeScreenings.toString()} icon={<Activity className="text-orange-600" />} trend="Now" />
+                </div>
+                
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                  <RecentUsersList users={users.slice(0, 5)} onViewAll={() => setActiveView('users')} />
+                  <ActivityList activities={activities.slice(0, 8)} />
                 </div>
               </div>
-            </div>
-          </div>
-        )}
+            )}
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <StatCard 
-            title="Total Users" 
-            value={stats.totalUsers.toString()} 
-            icon={<Users className="text-blue-600" />} 
-            trend="+12%" 
-          />
-          <StatCard 
-            title="Active Jobs" 
-            value={stats.totalJobs.toString()} 
-            icon={<Briefcase className="text-purple-600" />} 
-            trend="+5%" 
-          />
-          <StatCard 
-            title="Applications" 
-            value={stats.totalApplications.toString()} 
-            icon={<CheckCircle className="text-green-600" />} 
-            trend="+18%" 
-          />
-          <StatCard 
-            title="Active Screenings" 
-            value={stats.activeScreenings.toString()} 
-            icon={<Activity className="text-orange-600" />} 
-            trend="Live" 
-          />
-        </div>
-
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-          {/* Main Section - Users */}
-          <div className="xl:col-span-2 space-y-8">
-            <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-              <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
-                <h2 className="font-bold text-slate-900">Recent Users</h2>
-                <button className="text-xs font-bold text-primary-600 hover:underline">View all</button>
-              </div>
-              <div className="p-0 overflow-x-auto">
-                {users.length === 0 ? (
-                  <div className="p-12 text-center text-slate-400">
-                    <Users className="w-12 h-12 mx-auto mb-4 opacity-10" />
-                    <p>No users found.</p>
+            {activeView === 'users' && (
+              <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                  <div className="flex items-center space-x-4 flex-1 max-w-md">
+                    <div className="relative flex-1">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input 
+                        type="text" 
+                        placeholder="Search users by name or email..." 
+                        className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500/20 outline-none"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                      />
+                    </div>
                   </div>
-                ) : (
-                  <table className="w-full text-left border-collapse">
-                    <thead className="bg-slate-50/50 text-slate-500 text-[10px] uppercase tracking-wider font-bold">
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead className="bg-slate-50 text-slate-500 text-[10px] uppercase font-bold tracking-wider">
                       <tr>
-                        <th className="px-6 py-3">User</th>
-                        <th className="px-6 py-3">Role</th>
-                        <th className="px-6 py-3">Joined</th>
-                        <th className="px-6 py-3">Last Login</th>
-                        <th className="px-6 py-3"></th>
+                        <th className="px-6 py-4">User</th>
+                        <th className="px-6 py-4">Role</th>
+                        <th className="px-6 py-4">Status</th>
+                        <th className="px-6 py-4 text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {users.slice(0, 5).map((user) => (
-                        <tr key={user._id} className="hover:bg-slate-50/50 transition-colors group">
+                      {filteredUsers.map(user => (
+                        <tr key={user._id} className="hover:bg-slate-50/50 transition-colors">
                           <td className="px-6 py-4">
                             <div className="flex items-center space-x-3">
-                              <div className="w-8 h-8 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-bold text-xs">
-                                {user.firstName.charAt(0)}{user.lastName.charAt(0)}
+                              <div className="w-10 h-10 rounded-full bg-primary-50 text-primary-600 flex items-center justify-center font-bold text-xs border border-primary-100">
+                                {user.firstName[0]}{user.lastName[0]}
                               </div>
                               <div>
                                 <div className="font-bold text-slate-900">{user.firstName} {user.lastName}</div>
-                                <div className="text-xs text-slate-400">{user.email}</div>
+                                <div className="text-xs text-slate-500">{user.email}</div>
                               </div>
                             </div>
                           </td>
                           <td className="px-6 py-4">
-                            <RoleBadge role={user.role} />
+                            <select 
+                              value={user.role} 
+                              onChange={(e) => handleUpdateRole(user._id, e.target.value)}
+                              disabled={actionLoading === user._id}
+                              className="bg-white border border-slate-200 rounded-lg text-xs px-2 py-1 outline-none focus:ring-2 focus:ring-primary-500/20"
+                            >
+                              <option value="talent">Talent</option>
+                              <option value="recruiter">Recruiter</option>
+                              <option value="admin">Admin</option>
+                            </select>
                           </td>
                           <td className="px-6 py-4">
-                            <div className="text-xs text-slate-400">
-                              {new Date(user.createdAt).toLocaleDateString()}
-                            </div>
+                            <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-[10px] font-bold uppercase">Active</span>
                           </td>
-                          <td className="px-6 py-4">
-                            <div className="text-xs text-slate-400">
-                              {user.lastLogin ? new Date(user.lastLogin).toLocaleDateString() : 'Never'}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            <button className="text-primary-600 text-xs font-bold opacity-0 group-hover:opacity-100 transition-opacity">
-                              Manage
+                          <td className="px-6 py-4 text-right space-x-2">
+                            <button 
+                              onClick={() => handleDeleteUser(user._id)}
+                              className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors"
+                            >
+                              <X className="w-4 h-4" />
                             </button>
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                )}
+                </div>
               </div>
-            </div>
+            )}
 
-            {/* System Activity */}
-            <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-              <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
-                <h2 className="font-bold text-slate-900">System Activity</h2>
-                <button className="text-xs font-bold text-primary-600 hover:underline">View all</button>
+            {activeView === 'jobs' && (
+              <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                  <div className="relative max-w-md flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input 
+                      type="text" 
+                      placeholder="Search jobs..." 
+                      className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary-500/20"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead className="bg-slate-50 text-slate-500 text-[10px] uppercase font-bold tracking-wider">
+                      <tr>
+                        <th className="px-6 py-4">Job Details</th>
+                        <th className="px-6 py-4">Recruiter</th>
+                        <th className="px-6 py-4">Status</th>
+                        <th className="px-6 py-4 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredJobs.map(job => (
+                        <tr key={job._id} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="px-6 py-4">
+                            <div>
+                              <div className="font-bold text-slate-900">{job.title}</div>
+                              <div className="text-xs text-slate-400">{job.company}</div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="text-xs font-medium text-slate-600">
+                              {job.recruiterId ? `${job.recruiterId.firstName} ${job.recruiterId.lastName}` : 'System'}
+                            </div>
+                            <div className="text-[10px] text-slate-400">{job.recruiterId?.email}</div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <button 
+                              onClick={() => handleToggleJob(job._id, job.isActive)}
+                              disabled={actionLoading === job._id}
+                              className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase transition-all ${
+                                job.isActive ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'
+                              }`}
+                            >
+                              {job.isActive ? 'Active' : 'Inactive'}
+                            </button>
+                          </td>
+                          <td className="px-6 py-4 text-right space-x-2">
+                            <button 
+                              onClick={() => handleDeleteJob(job._id)}
+                              className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-              <div className="p-6 space-y-4">
-                {activities.length === 0 ? (
-                  <p className="text-center text-slate-400 text-sm py-4">No recent activity</p>
-                ) : (
-                  activities.slice(0, 5).map((activity) => (
-                    <div key={activity._id} className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 border border-slate-100">
-                      <div className="flex items-center space-x-4">
-                        <div className="w-10 h-10 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center">
-                          <Activity className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <div className="text-sm font-bold text-slate-900">{activity.description}</div>
-                          <div className="text-xs text-slate-400">
-                            by {activity.userName || 'Unknown'} • {activity.type}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="text-xs text-slate-400">
-                        {new Date(activity.createdAt).toLocaleDateString()}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
+            )}
           </div>
-
-          {/* Sidebar - System Info */}
-          <div className="space-y-6">
-            <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-              <div className="px-6 py-5 border-b border-slate-100">
-                <h2 className="font-bold text-slate-900">System Health</h2>
-              </div>
-              <div className="p-6 space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-slate-600">API Status</span>
-                  <HealthIndicator status="healthy" />
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-slate-600">Database</span>
-                  <HealthIndicator status="healthy" />
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-slate-600">AI Services</span>
-                  <HealthIndicator status="healthy" />
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-slate-600">Storage</span>
-                  <HealthIndicator status="warning" />
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-              <div className="px-6 py-5 border-b border-slate-100">
-                <h2 className="font-bold text-slate-900">Quick Actions</h2>
-              </div>
-              <div className="p-6 space-y-3">
-                <button className="w-full flex items-center space-x-3 px-4 py-3 bg-primary-600 text-white rounded-xl font-bold hover:bg-primary-700 transition-all">
-                  <Users className="w-5 h-5" />
-                  <span>User Management</span>
-                </button>
-                <button className="w-full flex items-center space-x-3 px-4 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold hover:bg-slate-200 transition-all">
-                  <Database className="w-5 h-5" />
-                  <span>Database Backup</span>
-                </button>
-                <button className="w-full flex items-center space-x-3 px-4 py-3 bg-white border border-slate-200 text-slate-700 rounded-xl font-bold hover:bg-slate-50 transition-all">
-                  <Shield className="w-5 h-5" />
-                  <span>Security Audit</span>
-                </button>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-              <div className="px-6 py-5 border-b border-slate-100">
-                <h2 className="font-bold text-slate-900">System Info</h2>
-              </div>
-              <div className="p-6 space-y-3 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-slate-600">Version</span>
-                  <span className="font-bold text-slate-900">v2.1.0</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-600">Uptime</span>
-                  <span className="font-bold text-slate-900">99.9%</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-600">Last Backup</span>
-                  <span className="font-bold text-slate-900">2 hours ago</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        )}
       </main>
+
+      <ConfirmDialog
+        isOpen={showLogoutDialog}
+        onClose={() => setShowLogoutDialog(false)}
+        onConfirm={confirmLogout}
+        title="Logout Confirmation"
+        message="Are you sure you want to logout? You will need to sign in again to access admin tools."
+        confirmText="Logout"
+        cancelText="Cancel"
+      />
     </div>
   );
 }
+
+function RecentUsersList({ users, onViewAll }: { users: User[], onViewAll: () => void }) {
+  return (
+    <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm flex flex-col">
+      <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+        <h2 className="font-bold text-slate-900">Recent Registrations</h2>
+        <button onClick={onViewAll} className="text-xs font-bold text-primary-600 hover:underline">View all</button>
+      </div>
+      <div className="flex-1">
+        {users.length === 0 ? (
+          <div className="p-12 text-center text-slate-400">No users found.</div>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {users.map((user) => (
+              <div key={user._id} className="px-6 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
+                <div className="flex items-center space-x-3">
+                  <div className="w-8 h-8 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-bold text-xs">
+                    {user.firstName[0]}{user.lastName[0]}
+                  </div>
+                  <div>
+                    <div className="text-sm font-bold text-slate-900">{user.firstName} {user.lastName}</div>
+                    <div className="text-xs text-slate-400">{user.email}</div>
+                  </div>
+                </div>
+                <RoleBadge role={user.role} />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ActivityList({ activities }: { activities: SystemActivity[] }) {
+  return (
+    <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm flex flex-col">
+      <div className="px-6 py-5 border-b border-slate-100">
+        <h2 className="font-bold text-slate-900">System Activity</h2>
+      </div>
+      <div className="flex-1 overflow-y-auto max-h-[400px] p-6 space-y-4">
+        {activities.length === 0 ? (
+          <p className="text-center text-slate-400 text-sm py-4">No recent activity</p>
+        ) : (
+          activities.map((activity) => (
+            <div key={activity._id} className="flex items-start space-x-4 p-3 rounded-2xl bg-slate-50 border border-slate-100">
+              <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center shrink-0">
+                <Activity className="w-4 h-4" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-bold text-slate-900 line-clamp-1">{activity.description}</div>
+                <div className="text-[10px] text-slate-400 mt-0.5">
+                  {activity.userName || 'System'} • {new Date(activity.createdAt).toLocaleTimeString()}
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 
 function NavItem({ icon, label, active = false, onClick }: { icon: React.ReactNode, label: string, active?: boolean, onClick: () => void }) {
   return (

@@ -2,6 +2,7 @@ import express from 'express';
 import { 
   createJob, 
   getJobs, 
+  getMyJobs,
   getJobById, 
   updateJob, 
   deleteJob 
@@ -13,6 +14,7 @@ const router = express.Router();
 
 router.post('/', authenticateToken, requireRole(['recruiter', 'admin']), createJob);
 router.get('/', optionalAuthenticateToken, getJobs);
+router.get('/mine', authenticateToken, requireRole(['recruiter', 'admin']), getMyJobs);
 router.get('/:id', getJobById);
 router.get('/:id/shortlist', authenticateToken, requireRole(['recruiter', 'admin']), getShortlistedCandidates);
 router.put('/:id', authenticateToken, requireRole(['recruiter', 'admin']), updateJob);

@@ -13,6 +13,7 @@ import { screeningRoutes } from './routes/screening';
 import { fileRoutes } from './routes/files';
 import { applicationRoutes } from './routes/applications';
 import { adminRoutes } from './routes/admin';
+import { debugRoutes } from './routes/debug';
 import { generalLimiter, authLimiter, uploadLimiter, aiLimiter } from './middleware/rateLimit';
 import { securityHeaders } from './middleware/security';
 import { config } from './config';
@@ -47,6 +48,7 @@ app.use('/api/screening', aiLimiter, screeningRoutes);
 app.use('/api/files', uploadLimiter, fileRoutes);
 app.use('/api/applications', generalLimiter, applicationRoutes);
 app.use('/api/admin', generalLimiter, adminRoutes);
+app.use('/api/debug', debugRoutes);
 
 // Global error handler
 app.use((error: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

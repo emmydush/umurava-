@@ -6,7 +6,8 @@ import {
   getApplicationById,
   updateApplicationStatus,
   triggerAIScoring,
-  getPipelineStatus
+  getPipelineStatus,
+  checkJobQualification
 } from '../controllers/applicationController';
 import { authenticateToken, requireRole } from '../middleware/auth';
 
@@ -16,6 +17,7 @@ const router = express.Router();
 router.post('/', authenticateToken, requireRole(['talent', 'recruiter', 'admin']), createApplication);
 router.post('/bulk', authenticateToken, requireRole(['recruiter', 'admin']), bulkCreateApplications);
 router.get('/', authenticateToken, getApplications);
+router.get('/check-qualification/:jobId', authenticateToken, requireRole(['talent']), checkJobQualification);
 router.get('/:id', authenticateToken, getApplicationById);
 router.put('/:id/status', authenticateToken, requireRole(['recruiter', 'admin']), updateApplicationStatus);
 

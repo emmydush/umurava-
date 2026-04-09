@@ -17,8 +17,8 @@ export const createApplication = async (req: Request & { user?: any }, res: Resp
       // Auto-create a basic talent profile for the user
       talentProfile = new TalentProfile({
         userId: req.user._id,
-        firstName: req.user.firstName,
-        lastName: req.user.lastName,
+        firstName: req.user.firstName || 'User',
+        lastName: req.user.lastName || 'Name',
         email: req.user.email,
         title: 'Job Seeker',
         summary: 'Looking for new opportunities',
@@ -26,7 +26,8 @@ export const createApplication = async (req: Request & { user?: any }, res: Resp
         experience: [],
         education: [],
         completedScreenings: 0,
-        averageScore: 0
+        averageScore: 0,
+        workType: 'both' // Set default work type to match any job
       });
       
       await talentProfile.save();
@@ -50,6 +51,28 @@ export const createApplication = async (req: Request & { user?: any }, res: Resp
     } as any);
     if (existingApplication) {
       return res.status(400).json({ message: 'You have already applied for this job' });
+    }
+
+    // CHECK QUALIFICATION BEFORE APPLYING
+    const jobSkills = job.skills.map(s => s.toLowerCase());
+    const talentSkills = talentProfile.skills.map(s => s.toLowerCase());
+    const matchedSkills = jobSkills.filter(s => talentSkills.includes(s));
+    
+    const skillMatchRatio = jobSkills.length > 0 ? matchedSkills.length / jobSkills.length : 1;
+    const workTypeMatch = job.workType === 'both' || talentProfile.workType === 'both' || job.workType === talentProfile.workType;
+
+    // More lenient qualification check for new users
+    // Allow application if: work type matches OR has at least some skills OR job has no specific skills
+    const isQualified = workTypeMatch || (talentSkills.length > 0 && skillMatchRatio >= 0.1) || jobSkills.length === 0;
+
+    if (!isQualified) {
+      return res.status(403).json({ 
+        message: 'You do not meet the minimum qualification criteria for this job.',
+        reason: 'Please update your profile with relevant skills and work preferences.',
+        matchedSkills,
+        requiredSkills: job.skills,
+        suggestion: 'Consider updating your profile to include relevant skills or adjust your work type preferences.'
+      });
     }
 
     const application = new Application({
@@ -86,7 +109,10 @@ export const createApplication = async (req: Request & { user?: any }, res: Resp
         appliedAt: application.appliedAt
       }
     });
-  } catch (error) {
+  } catch (error: any) {
+    if (error.code === 11000) {
+      return res.status(400).json({ message: 'You have already applied for this job' });
+    }
     console.error('Error creating application:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
@@ -177,6 +203,18 @@ export const getApplications = async (req: Request & { user?: any }, res: Respon
       const talentProfile = await TalentProfile.findOne({ userId: req.user._id });
       if (talentProfile) {
         filter.candidateId = talentProfile._id;
+      } else {
+        // Talent user without profile - return empty results
+        return res.json({
+          message: 'Applications retrieved successfully',
+          applications: [],
+          pagination: {
+            page: 1,
+            limit: 10,
+            total: 0,
+            pages: 0
+          }
+        });
       }
     }
     
@@ -225,7 +263,7 @@ export const getApplicationById = async (req: Request & { user?: any }, res: Res
     // Role-based access control
     if (req.user.role === 'recruiter') {
       const job = await JobPosting.findById(application.jobId);
-      if (!job || (job.recruiterId.toString() !== req.user._id && req.user.role !== 'admin')) {
+      if (!job || (job.recruiterId.toString() !== req.user._id.toString() && req.user.role !== 'admin')) {
         return res.status(403).json({ message: 'Unauthorized to view this application' });
       }
     } else if (req.user.role === 'talent') {
@@ -263,11 +301,11 @@ export const updateApplicationStatus = async (req: Request & { user?: any }, res
     // Only recruiters and admins can update application status
     if (req.user.role === 'recruiter') {
       const job = application.jobId as any;
-      if (job.recruiterId.toString() !== req.user._id && req.user.role !== 'admin') {
-        return res.status(403).json({ message: 'Unauthorized to update this application' });
+      if (job.recruiterId.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+        return res.status(403).json({ message: 'Unauthorized to update this application. You can only update applications for your own jobs.' });
       }
     } else if (req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Unauthorized to update application status' });
+      return res.status(403).json({ message: 'Only recruiters and admins can perform this action.' });
     }
 
     application.status = status;
@@ -302,7 +340,7 @@ export const triggerAIScoring = async (req: Request & { user?: any }, res: Respo
       return res.status(404).json({ message: 'Job not found' });
     }
 
-    if (job.recruiterId.toString() !== req.user._id && req.user.role !== 'admin') {
+    if (job.recruiterId.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
       return res.status(403).json({ message: 'Unauthorized to trigger AI scoring for this job' });
     }
 
@@ -361,7 +399,7 @@ export const getPipelineStatus = async (req: Request & { user?: any }, res: Resp
       return res.status(404).json({ message: 'Job not found' });
     }
 
-    if (job.recruiterId.toString() !== req.user._id && req.user.role !== 'admin') {
+    if (job.recruiterId.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
       return res.status(403).json({ message: 'Unauthorized to view pipeline status for this job' });
     }
 
@@ -378,5 +416,55 @@ export const getPipelineStatus = async (req: Request & { user?: any }, res: Resp
       message: 'Failed to get pipeline status',
       error: error instanceof Error ? error.message : 'Unknown error'
     });
+  }
+};
+
+export const checkJobQualification = async (req: Request & { user?: any }, res: Response) => {
+  try {
+    const { jobId } = req.params;
+    
+    if (!jobId) {
+      return res.status(400).json({ message: 'Job ID is required' });
+    }
+
+    const job = await JobPosting.findById(jobId);
+    if (!job) {
+      return res.status(404).json({ message: 'Job not found' });
+    }
+
+    const talentProfile = await TalentProfile.findOne({ userId: req.user._id });
+    if (!talentProfile) {
+      return res.status(404).json({ message: 'Talent profile not found. Please complete your profile first.' });
+    }
+
+    const jobSkills = job.skills.map(s => s.toLowerCase());
+    const talentSkills = talentProfile.skills.map(s => s.toLowerCase());
+    const matched = jobSkills.filter(s => talentSkills.includes(s));
+    const missing = jobSkills.filter(s => !talentSkills.includes(s));
+    
+    const skillMatchRatio = jobSkills.length > 0 ? matched.length / jobSkills.length : 1;
+    const workTypeMatch = job.workType === 'both' || talentProfile.workType === 'both' || job.workType === talentProfile.workType;
+
+    const score = Math.round((skillMatchRatio * 70) + (workTypeMatch ? 30 : 0));
+    const isQualified = score >= 40; // Broad threshold
+
+    const reasons: string[] = [];
+    if (!workTypeMatch) reasons.push(`Job requires ${job.workType} commitment, your profile is ${talentProfile.workType}`);
+    if (skillMatchRatio < 0.3) reasons.push("Low skill match for this specific role");
+
+    res.json({
+      message: 'Qualification check completed',
+      qualification: {
+        isQualified,
+        score,
+        matchedSkills: matched,
+        missingSkills: missing,
+        reasons,
+        matchPercentage: Math.round(skillMatchRatio * 100)
+      }
+    });
+  } catch (error) {
+    console.error('Error checking qualification:', error);
+    res.status(500).json({ message: 'Internal server error' });
   }
 };
